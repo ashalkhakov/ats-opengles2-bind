@@ -17,7 +17,8 @@ endif
 
 ATSCC=$(ATSUSRQ)/bin/atscc
 ATSLEX=$(ATSUSRQ)/bin/atslex
-ATSMISCCTRB=$(MISCATSHOME)/GLES2/atsctrb_GLES2.o
+HOME=/home/artyom/proj/ats-ogles2
+ATSMISCCTRB=$(HOME)/GLES2/atsctrb_GLES2.o
 
 ######
 
@@ -39,32 +40,32 @@ util.o: util_sats.o util_dats.o
 	ld -r -o $@ util_sats.o util_dats.o
 
 util_sats.o: SATS/util.sats
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
-	  -o $@ -c SATS/util.sats
+	$(ATSCC) -IATS $(HOME) -I $(HOME) -o $@ -c SATS/util.sats
 util_dats.o: DATS/util.dats
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
-	  -o $@ -c DATS/util.dats
+	$(ATSCC) -IATS $(HOME) -I $(HOME) -o $@ -c DATS/util.dats
 
 obj_sats.o: SATS/obj.sats
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
+	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o $@ -c SATS/obj.sats
 
 obj_lats.dats: DATS/obj.lats
 	$(ATSLEX) < $< > $@
 obj_lats_dats.o: obj_lats.dats obj_sats.o
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
+	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o $@ -c obj_lats.dats obj_sats.o
 
 test01: GLES2-test01.dats util.o
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
-	  -o test01 GLES2-test01.dats $(ATSMISCCTRB) util.o -lm -lX11 -lEGL -lGLESv2
+	$(ATSCC) -IATS $(HOME) -I $(HOME) \
+	  -o test01 GLES2-test02.dats util.o \
+	  $(ATSMISCCTRB) -lm -lX11 -lEGL -lGLESv2
 
 test02: GLES2-test02.dats util.o
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
-	  -o test02 GLES2-test02.dats $(ATSMISCCTRB) util.o -lm -lX11 -lEGL -lGLESv2
+	$(ATSCC) -IATS $(HOME) -I $(HOME) \
+	  -o test02 GLES2-test02.dats util.o \
+	  $(ATSMISCCTRB) -lm -lX11 -lEGL -lGLESv2
 
 test03: GLES2-test03.dats util.o obj_lats_dats.o
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
+	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o test03 GLES2-test03.dats \
 	   prelude/DATS/list_vt.dats libats/DATS/rarray.dats libats/SATS/rarray.sats libc/SATS/stdlib.sats libc/SATS/fcntl.sats \
 	   libc/sys/SATS/types.sats \

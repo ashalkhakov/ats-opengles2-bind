@@ -11,6 +11,7 @@ ATSUSRQ="/usr"
 endif
 
 ATSCC=$(ATSUSRQ)/bin/atscc
+HOME=/home/artyom/proj/ats-ogles2
 
 ######
 
