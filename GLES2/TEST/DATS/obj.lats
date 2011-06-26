@@ -272,6 +272,7 @@ fun parse_faceidx (tok: &token, f: &faceidx): void = case+ tok of
   | ~TOKint sz0 => let // v
       val [sz0:int] sz0 = int1_of_int sz0
       val () = assert_errmsg (sz0 > 0, "[parse_faceidx]: not 1-based!")
+      val sz0 = size_of_int (sz0 - 1)
       val () = tok := TOKEN ()
     in
       case+ tok of
@@ -282,6 +283,7 @@ fun parse_faceidx (tok: &token, f: &faceidx): void = case+ tok of
           | ~TOKint sz1 => let // v/x, where x is either normal index, or texcoord index
               val [sz1:int] sz1 = int1_of_int sz1
               val () = assert_errmsg (sz1 > 0, "[parse_faceidx]: not 1-based!")
+              val sz1 = size_of_int (sz1 - 1)
               val () = tok := TOKEN ()
             in
               case+ tok of
@@ -293,17 +295,18 @@ fun parse_faceidx (tok: &token, f: &faceidx): void = case+ tok of
                   | ~TOKint sz2 => let
                       val [sz2:int] sz2 = int1_of_int sz2
                       val () = assert_errmsg (sz2 > 0, "[parse_faceidx]: not 1-based!")
+                      val sz2 = size_of_int (sz2 - 1)
                     in
                       tok := TOKEN ();
-                      f.vidx := size_of_int (sz0 - 1);
-                      f.tidx := size_of_int (sz1 - 1);
-                      f.nidx := size_of_int (sz2 - 1)
+                      f.vidx := sz0;
+                      f.tidx := sz1;
+                      f.nidx := sz2
                     end // end of [begin]
                   // v/t/_
                   | tok_v => (tok := tok_v; parse_error "expected normal index")
                 end // end of [let]
               | tok_v => // v/t
-                  (tok := tok_v; f.vidx := size_of_int sz0; f.tidx := size_of_int sz1)
+                  (tok := tok_v; f.vidx := sz0; f.tidx := sz1)
             end // end of [let]
           | ~TOKsl () => let // v//
               val () = tok := TOKEN ()
@@ -312,16 +315,17 @@ fun parse_faceidx (tok: &token, f: &faceidx): void = case+ tok of
               | ~TOKint sz1 => let // v//n
                   val [sz1:int] sz1 = int1_of_int sz1
                   val () = assert_errmsg (sz1 > 0, "[parse_faceidx]: not 1-based!")
+                  val sz1 = size_of_int (sz1 - 1)
                   val () = tok := TOKEN ()
                 in
-                  f.vidx := size_of_int (sz0 - 1); f.nidx := size_of_int (sz1 - 1)
+                  f.vidx := sz0; f.nidx := sz1
                 end // end of [let]
               | tok_v => // v//x
                   (tok := tok_v; parse_error "expected unsigned int")
             end // end of [let]
           | tok_v => (tok := tok_v; parse_error "expected forward slash")
         end // end of [let]
-      | tok_v => (tok := tok_v; f.vidx := size_of_int sz0)
+      | tok_v => (tok := tok_v; f.vidx := sz0)
     end // end of [let]
   | tok_v => (tok := tok_v; parse_error "expected unsigned int")
 // end of [parse_faceidx]

@@ -10,16 +10,19 @@
 *)
 
 (*
-roadblock: moving loaded mesh into GPU and rendering it?
-moving loaded mesh into GPU
+roadblock: something is wrong with matrices!
 *)
 
 staload "libc/SATS/math.sats"
 
 staload _(*anonymous*) = "prelude/DATS/array.dats"
+staload _(*anonymous*) = "prelude/DATS/reference.dats"
 
 staload GA = "libats/SATS/genarrays.sats"
 stadef GEVEC = $GA.GEVEC
+stadef GEVEC_v = $GA.GEVEC_v
+
+staload _(*anonymous*) = "libats/DATS/genarrays.dats"
 
 staload "GLES2/SATS/gl2.sats"
 
@@ -135,73 +138,20 @@ dynload "obj_lats.dats"
 
 (* ****** ****** *)
 
-// how to represent buffers in our app?
-// fun buffers_of_mesh (msh: &mesh, vts: &)
-// glVertexAttribPointer(3, GL_FLOAT, 8 * sizeof(float), 0)
-// glVertexAttribPointer(3, GL_FLOAT, 8 * sizeof(float), 3)
-// glVertexAttribPointer(2, GL_FLOAT, 8 * sizeof(float), 5)
-// matrix (float, 8, n)
-
 (*
-fun glVertexAttribPointer {a:t@ype} {n:pos | n <= 4} {m:nat} {l:addr} (
-  pf: !matrix_v (a, m, n, l)
+extern
+fun glVertexAttribPointer {a:t@ype} {n,k:nat} {ofs:int} (
+  pf_mul: MUL (k, sizeof a, ofs)
 | indx: GLuint
 , size: GLint n
 , type: GLenum_type a
 , normalized: GLboolean
-, stride: GLsizei 0
-, p: ptr l
+, stride: GLsizei ofs
+, p: &GEVEC (a, n, k)
 ) : void
+  = "mac#atsctrb_glVertexAttribPointer"
+// end of [glVertexAttribPointer]
 *)
-
-// given vertices, normals, texcoords and faces,
-// - if numverts = 0, there is something wrong!
-//   else allocate verts: @[vec3][numverts] and initialize it in reverse
-// - if numnorms > 0, allocate norms: @[vec3][numverts]
-//    and map every face.nindex to face.vindex
-//    vertex[vidx]
-//    out.[vindex] := in.[nindex]
-// - if numtexcoords > 0, allocate texcoords: @[vec2][numverts]
-//    and map every face.tindex to face.vindex
-//    out.[vindex] := in.[tindex]
-// - triangles simply need to be copied to indices
-
-// extern fun remap {nv,nn,nt,nf:nat} (m: !mesh (nv, nn, ntc, nf), )
-// for each face [f] in [mesh.faces]:
-//   for each face element [e] in [f]:
-//     FIXME: does OBJ count from 1? it seems so
-//     assert_errmsg (f.e.vindex < vindices, "something bad happened")
-//     norms.[f.e.vindex] := mesh.norms.[f.e.nindex]
-//     texcoords.[f.e.vindex] := mesh.texcoords.[f.e.tindex]
-// we can also convert triangles to indices
-
-(*
-in this case, a VBO can be seen as a matrix (or rather, an array of arrays),
-where each row is a vertex.
-*)
-
-// computing stride...
-// (@(a, b) @ l | ptr l) -> (a @ l, b @ l+ofs, (a @ l, b @ l+ofs) -<prf> @(a, b) @ l | size_t ofs)
-//
-(*
-absview deltarray_v (a:viewt@ype, n:int(*size*), d:int(*delta*), l:addr(*start*))
-extern fun deltarray_of_array {a,b:viewt@ype} {n:nat} {l:addr} (
-  pf_arr: array_v (@(a, b), n, l)
-| ptr l
-) :<> [ofs:nat] (
-  deltarray_v (a, n, sizeof(@(a, b)), l)
-  deltarray_v (b, n, sizeof(@(a, b)), l+ofs)
-, size_t ofs
-)
-*)
-//
-// (array_v (@(a, b), n, l) | ptr l) -> (
-//   arrayd_v (a, n, sizeof(@(a,b)), l)
-// , arrayd_v (b, n, sizeof(@(a,b)), l+ofs)
-// | size_t ofs
-// )
-
-// fun make_vbo (msh: !mesh):
 
 (* ****** ****** *)
 
@@ -251,69 +201,283 @@ in
   // nothing
 end // end of [create_shaders]
 
-(*
-viewdef gpumesh (d:int) = @{
-  buf= GLbuffer
-, vsiz= size_t d
-, pofs= sizeLt d
-, nofs= sizeLt d
-, tofs= sizeLt d
+(* ****** ****** *)
+
+// index buffer
+viewtypedef gpuidx = @{
+  buf= GLbuffer  // buffer object (storage)
+, mode= GLenum   // GL_TRIANGLES, ...
+, count= GLsizei // total count of indices
+, type= [a:t@ype] GLenum_type a  // GL_UNSIGNED_INT, ...
+} // end of [gpuidx]
+
+// vertex buffer
+viewtypedef gpuvrt = @{
+  buf= GLbuffer                // buffer object (storage)
+, pos= GLsizei                 // offset to position
+, size= GLsizei                // element size (in [type])
+, type= [a:t@ype] GLenum_type a  // GL_FLOAT, ...
+} // end of [gpuvrt]
+
+%{^
+ats_GLuint_type cast_size_to_GLuint (ats_size_type x) { return x; }
+
+void
+glBufferData_convert (
+  ats_GLenum_type target
+, ats_GLenum_type type
+, ats_size_type tsz
+, ats_size_type sz
+, ats_ptr_type data
+, ats_GLenum_type usage
+) {
+  glBufferData (target, sz * tsz, (void *)data, usage);
+  return;
+} // end of [glBufferData_convert]
+
+void glBufferDataF3 (
+  ats_size_type n
+, ats_ref_type data
+, ats_GLenum_type usage
+) {
+  glBufferData (GL_ARRAY_BUFFER, n * sizeof(float) * 3, (void *)data, usage);
+  return;
 }
 
+void glVertexAttribPointerBuffer (
+  ats_GLuint_type indx
+, ats_GLsizei_type size
+, ats_GLenum_type type
+, ats_GLsizei_type stride
+, ats_GLsizei_type pos
+) {
+  glVertexAttribPointer (indx, size, type, GL_FALSE, stride, (void *)pos);
+  return;
+} // end of [glVertexAttribPointerBuffer]
+
+void glDrawElementsBuffer (
+  ats_GLenum_type mode
+, ats_GLsizei_type count
+, ats_GLenum_type type
+) {
+  glDrawElements (mode, count, type, NULL);
+  return;
+} // end of [glDrawElementsBuffer]
+
+%}
+
 extern
-fun mesh_reindex (
-  m: &mesh
-, buf: &GEVEC (GLfloat, n, d)
-, d: &size_t? >> size_t d
-, n: &size_t? >> size_t n
-) :<> #[n,d:nat] void
-*)
+fun cast_size_to_GLuint (x: size_t):<> GLuint = "cast_size_to_GLuint"
 
-(*
-how to load:
-- create a chunk big enough to hold all the mesh data
-- copy vertex positions, normals, etc. into the chunk
-- then:
-   glGenBuffers(1, &vbo);
-   glBindBuffer(GL_ARRAY_BUFFER, vbo);
-   glBufferData(GL_ARRAY_BUFFER, bytes, buffer, GL_STATIC_DRAW_ARB);
-   glBindBufferB(GL_ARRAY_BUFFER, 0);
-// in our case, the whole buffer consists of only floats:
-// it can be represented by GEVEC (from libats/SATS/genarrays.sats)
-// or by GEMAT, even
+extern
+fun glBufferData {n:nat} {a:t@ype} (
+  target: GLenum, type: GLenum_type a
+, tsz: size_t (sizeof a)
+, sz: size_t n, data: &(@[a][n]), usage: GLenum
+) : void
+  = "glBufferData_convert"
+// end of [fun]
 
-// renumbering the mesh:
-// - forall triangle vertices:
-//   v = vindex, t = tindex, n = nindex
-//   tc = lookup (t, texcoords)
-//   nm = lookup (n, norms)
-//   vt = lookup (v, verts)
-//   out.tc := tc; out.nm := nm; out.vt := vt
-// the resulting array can be directly used for loading into a VBO
+extern
+fun glBufferDataF3 {n:nat} (
+  n: size_t n, p: &(@[float3_t][n])
+, usage: GLenum
+) : void
+  = "glBufferDataF3"
+// end of [fun]
 
-   glBindBufferARB(GL_ARRAY_BUFFER_ARB, model->vbo);
+extern
+fun glVertexAttribPointerBuffer {a:t@ype} (
+  indx: GLuint
+, size: GLsizei
+, type: GLenum_type a
+, stride: GLsizei
+, pos: GLsizei
+) : void
+  = "glVertexAttribPointerBuffer"
+// end of [glVertexAttribPointerBuffer]
 
-   glVertexPointer(3, GL_FLOAT, model->vertexSize * sizeof(float), (void * ) model->posOffset);
-   glEnableVertexAttribArray(attr_pos);
+extern
+fun glDrawElementsBuffer {a:t@ype} (
+  mode: GLenum, count: GLsizei, type: GLenum_type a
+) : void
+  = "glDrawElementsBuffer"
+// end of [glDrawElementsBuffer]
 
-   if (model->numnormals > 0) {
-      glNormalPointer(GL_FLOAT, model->vertexSize * sizeof(float), (void * ) model->normOffset);
-      glEnableVertexAttribArray(attr_norm);
-   }
+// TODO (perhaps): use smaller types if you can to conserve memory
+extern
+fun index_convert {n:nat} (
+  A: &(@[triangle][n])
+, n: size_t n
+, res: &ptr? >> ptr l
+, m: &size_t? >> size_t m
+) :<!exn> #[l:addr] #[m:nat] (
+  array_v (GLuint, m, l), free_gc_v (GLuint, m, l) | GLenum_type GLuint
+)
+implement index_convert {n} (A, n, res, resz) = let
+  val (tp, tsz) = (GL_UNSIGNED_INT, sizeof<GLuint>)
+  val (pf_mul | m) = n szmul2 (size1_of_int1 3)
+  prval () = () where {
+    prval pf2_mul = mul_make {n, 3} ()
+    prval () = mul_isfun (pf_mul, pf2_mul)
+  } // end of [where]
+  val [l:addr] (pf_gc, pf_arr | p) = array_ptr_alloc_tsz {GLuint} (m, tsz)
 
-   if (model->numtexcoords > 0) {
-      glTexCoordPointer(2, GL_FLOAT, model->vertexSize * sizeof(float), (void * ) model->texOffset);
-      glEnableVertexAttribArray(attr_texcoord);
-   }
-   glDrawElements(GL_TRIANGLES,
-     3 * group->numtriangles,
-     GL_UNSIGNED_INT, group->triIndexes);
+  fn __cast (x: size_t, n: size_t):<!exn> GLuint = let
+    // useless!
+//    val () = assert_errmsg (x < n, "[index_convert]: index out of range")
+  in
+    cast_size_to_GLuint x
+  end // end of [__cast]
 
-   glBindBufferARB(GL_ARRAY_BUFFER_ARB, 0);
-   glDisableVertexAttribArray(attr_pos);
-   glDisableVertexAttribArray(attr_norm);
-   glDisableVertexAttribArray(attr_texcoord);
-*)
+  fun loop {l,l2:addr} {n,m:nat} .<n>. (
+      pf_arr: array_v (GLuint?, m, l)
+    , pf_src: !array_v (triangle, n, l2)
+    , pf_mul: MUL (n, 3, m)
+    | p_src: ptr l2
+    , n: size_t n
+    , p_arr: ptr l
+    , m: size_t m
+    ) :<!exn> (array_v (GLuint, m, l) | void) =
+    if n > 0 then let
+      prval (pf_at, pf2_src) = array_v_uncons {triangle} (pf_src)
+      prval () = mul_pos_pos_pos (pf_mul)
+      prval MULind pf2_mul = pf_mul
+      val (v0, v1, v2) = !p_src
+      var p = p_arr
+
+      prval (pf1_at, pf2_arr) = array_v_uncons {GLuint?} (pf_arr)
+      val () = !p := __cast (v0.vidx, n)
+      val () = p := p + sizeof<GLuint>
+
+      prval (pf2_at, pf2_arr) = array_v_uncons {GLuint?} (pf2_arr)
+      val () = !p := __cast (v1.vidx, n)
+      val () = p := p + sizeof<GLuint>
+
+      prval (pf3_at, pf2_arr) = array_v_uncons {GLuint?} (pf2_arr)
+      val () = !p := __cast (v2.vidx, n)
+      val () = p := p + sizeof<GLuint>
+
+      val (pf3_arr | ()) = loop (pf2_arr, pf2_src, pf2_mul | p_src + sizeof<triangle>, n-1, p, m-3)
+
+      prval () = pf_src := array_v_cons {triangle} (pf_at, pf2_src)
+    in
+      (array_v_cons {GLuint} (pf1_at, array_v_cons {GLuint} (pf2_at, array_v_cons {GLuint} (pf3_at, pf3_arr))) | ())
+    end else let
+      prval MULbas () = pf_mul
+      prval () = array_v_unnil (pf_arr)
+      prval () = array_v_unnil (pf_src)
+      prval () = pf_src := array_v_nil {triangle} ()
+    in
+      (array_v_nil {GLuint} () | ())
+    end
+  // end of [loop]
+  val (pf_arr | ()) = loop (pf_arr, view@ A, pf_mul | &A, n, p, m)
+in
+  res := p;
+  resz := m;
+  (pf_arr, pf_gc | tp)
+end // end of [index_convert]
+
+fun mesh_upload_indices (m: &mesh, res: &gpuidx? >> gpuidx): void = let
+  var p: ptr and psz: size_t // uninitialized
+  val (pf_f, pf_fgc | n, fp) = m.faces
+  val (pf_arr, pf_gc | tp) = index_convert (!fp, n, p, psz)
+  val () = m.faces := (pf_f, pf_fgc | n, fp)
+  var i: GLbuffer // uninitialized
+  val () = glGenBuffer (i)
+  val () = glBindBuffer (GL_ELEMENT_ARRAY_BUFFER, i)
+  val () = glBufferData (GL_ELEMENT_ARRAY_BUFFER, tp, sizeof<GLuint>, psz, !p, GL_STATIC_DRAW)
+  extern
+  castfn __cast (x: size_t):<> GLsizei
+  // end of [extern]
+in
+  res.buf := i;
+  res.mode := GL_TRIANGLES;
+  res.count := __cast psz;
+  res.type := tp;
+  array_ptr_free (pf_gc, pf_arr | p);
+end // end of [mesh_upload_indices]
+
+fun mesh_upload_vertices (m: &mesh, res: &gpuvrt? >> gpuvrt): void = let
+  var v: GLbuffer // uninitialized
+  val () = glGenBuffer v
+  val (pf_v, pf_vgc | n, vp) = m.verts
+  extern
+  castfn __cast (x: size_t):<> GLsizei
+  // end of [extern]
+in
+  glBindBuffer (GL_ARRAY_BUFFER, v);
+  glBufferDataF3 (n, !vp, GL_STATIC_DRAW);
+  res.buf := v;
+  res.pos := __cast 0;
+  res.size := __cast 3;
+  res.type := GL_FLOAT;
+  m.verts := (pf_v, pf_vgc | n, vp)
+end // end of [mesh_upload_vertices]
+
+(* ****** ****** *)
+
+local
+
+dataviewtype gpumesh = gpumesh_some of (gpuidx, gpuvrt) | gpumesh_none of ()
+val the_gpumesh = ref<gpumesh> (gpumesh_none ())
+
+in // in of [local]
+
+fun the_gpumesh_destroy (): void = let
+  val (vbox pf | p) = ref_get_view_ptr the_gpumesh
+in
+  case+ !p of
+  | ~gpumesh_some (idx, vrt) => begin
+      $effmask_all (glDeleteBuffer (idx.buf); glDeleteBuffer (vrt.buf));
+      !p := gpumesh_none ()
+    end // end of [begin]
+  | gpumesh_none () => fold@ !p
+end // end of [the_gpumesh_destroy]
+
+fun the_gpumesh_init (m: &mesh): void = let
+  val (vbox pf | p) = ref_get_view_ptr the_gpumesh
+in
+  case+ !p of
+  | ~gpumesh_some (idx, vrt) => let
+      val () = $effmask_all (glDeleteBuffer (idx.buf); glDeleteBuffer (vrt.buf))
+      var idx: gpuidx and vrt: gpuvrt // uninitialized
+    in
+      $effmask_all (mesh_upload_indices (m, idx));
+      $effmask_all (mesh_upload_vertices (m, vrt));
+      !p := gpumesh_some (idx, vrt)
+    end // end of [let]
+  | ~gpumesh_none () => let
+      var idx: gpuidx
+      var vrt: gpuvrt
+    in
+      $effmask_all (mesh_upload_indices (m, idx));
+      $effmask_all (mesh_upload_vertices (m, vrt));
+      (!p := gpumesh_some (idx, vrt))
+    end // end of [let]
+end // end of [the_gpumesh_init]
+
+fun the_gpumesh_draw (): void = let
+  val (vbox pf | p) = ref_get_view_ptr (the_gpumesh)
+in
+  case+ !p of
+  | gpumesh_some (!idx, !vrt) => ($effmask_all (begin
+      glBindBuffer (GL_ELEMENT_ARRAY_BUFFER, !idx.buf);
+      glBindBuffer (GL_ARRAY_BUFFER, !vrt.buf);
+
+      glVertexAttribPointerBuffer (attr_pos, !vrt.size, !vrt.type, (GLsizei)0, !vrt.pos);
+      glEnableVertexAttribArray attr_pos;
+
+      glDrawElementsBuffer (!idx.mode, !idx.count, !idx.type);
+
+      glDisableVertexAttribArray attr_pos;
+    end); fold@ !p)
+    // end of [let]
+  | gpumesh_none () => fold@ !p
+end // end of [the_gpumesh_draw]
+
+end // end of [local]
 
 extern
 fun init (filename: string): void = "init"
@@ -322,12 +486,12 @@ implement init (filename) = let
   val () = mesh_from_file (filename, msh)
   val () = print "loaded a mesh\n"
   val () = begin
-    // 
     printf ("%d verts, %d norms, %d texcoords, %d tris\n", @(
       int1_of_size1 msh.verts.2, int1_of_size1 msh.norms.2
     , int1_of_size1 msh.texcoords.2, int1_of_size1 msh.faces.2
     ))
   end
+  val () = the_gpumesh_init msh
   val () = mesh_free msh
 in
   create_shaders ();
@@ -350,25 +514,25 @@ fn make_projection_matrix (
   val xmax = ymax * aspect
   val () = array_ptr_initialize_elt<GLfloat> (m, size1_of_int1 16, (GLfloat)0.0f)
 in
-  m.[0] := GLfloat (( 2.0f * near ) / ( xmax - xmin ));
+  m.[0] := GLfloat ((2.0f * near) / (xmax - xmin));
   m.[4] := GLfloat 0.0f;
-  m.[8] := GLfloat (( xmax + xmin ) / ( xmax - xmin ));
+  m.[8] := GLfloat ((xmax + xmin) / (xmax - xmin));
   m.[12] := GLfloat 0.0f;
 
   m.[1] := GLfloat 0.0f;
-  m.[5] := GLfloat (( 2.0f * near ) / ( ymax - ymin ));
-  m.[9] := GLfloat (( ymax + ymin ) / ( ymax - ymin ));
+  m.[5] := GLfloat ((2.0f * near) / (ymax - ymin));
+  m.[9] := GLfloat ((ymax + ymin) / (ymax - ymin));
   m.[13] := GLfloat 0.0f;
 
   m.[2] := GLfloat 0.0f;
   m.[6] := GLfloat 0.0f;
-  m.[10] := GLfloat (~( far + near ) / ( far - near ));
-  m.[14] := GLfloat (~( 2.0f * far * near ) / ( far - near ));
+  m.[10] := GLfloat (~(far + near) / (far - near));
+  m.[14] := GLfloat (~(2.0f * far * near) / (far - near));
 
   m.[3] := GLfloat 0.0f;
   m.[7] := GLfloat 0.0f;
-  m.[11] := (GLfloat) ~1.0f;
-  m.[15] :=  GLfloat 0.0f
+  m.[11] := (GLfloat)~1.0f;
+  m.[15] :=  (GLfloat) 1.0f
 end // end of [make_projection_matrix]
 
 fn make_x_rot_matrix (angle: GLfloat, m: &(@[GLfloat?][16]) >> @[GLfloat][16]):<> void = let
@@ -406,8 +570,8 @@ in
   m.[3] := xt;
   m.[5] := (GLfloat)1.0f;
   m.[7] := yt;
-  m.[10] := (GLfloat)1.0f;
-  m.[11] := zt;
+  m.[10] := zt;
+  m.[11] := (GLfloat)1.0f;
   m.[15] := (GLfloat)1.0f
 end // end of [make_trans_matrix]
 
@@ -481,7 +645,7 @@ implement draw () = let
     val () = glViewport (GLint_of_int1 0, GLint_of_int1 0,
                          GLsizei_of_int1 (int1_of_int w), GLsizei_of_int1 (int1_of_int h))
     val () = make_projection_matrix (
-      30.0f
+      45.0f
     , float_of w / float_of h
     , 1.0f, 300.0f, !p_proj
     ) // end of [val]
@@ -497,7 +661,7 @@ implement draw () = let
     val () = mul_matrix (!p_t, !p_a, !p_b)
     val () = mul_matrix (!p_model, !p_s, !p_t)
   }
-  val () = make_trans_matrix ((GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)~10.0f, !p_view)
+  val () = make_trans_matrix ((GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)10.0f, !p_view)
 in
   // set model-view-projection
   () where {
@@ -513,6 +677,8 @@ in
     prval () = pf_mat := array_v_unsing pf_mat1
   };
   glClear (GL_COLOR_BUFFER_BIT lor GL_DEPTH_BUFFER_BIT);
+  the_gpumesh_draw ()
+(*
   () where {
     prval pfmul = mul_make {3,3} ()
     prval pfmat = matrix_v_of_array_v {GLfloat} (pfmul, pf_verts)
@@ -521,7 +687,7 @@ in
     prval () = mul_isfun (pfmul, pfmul')
     prval () = pf_verts := pfarr
   }; // end of [where]
-(*  () where {
+  () where {
     prval pfmul = mul_make {3,3} ()
     prval pfmat = matrix_v_of_array_v {GLfloat} (pfmul, pf_colors)
     val () = glVertexAttribPointer (pfmat | attr_color, (GLint)3, GL_FLOAT, GL_FALSE, (GLsizei)0, p_colors)
@@ -529,10 +695,10 @@ in
     prval () = mul_isfun (pfmul, pfmul')
     prval () = pf_colors := pfarr
   }; *) // end of [where]
-  glEnableVertexAttribArray attr_pos;
+//  glEnableVertexAttribArray attr_pos;
 //  glEnableVertexAttribArray attr_color;
-  glDrawArrays (GL_TRIANGLES, (GLint)0, (GLsizei)3);
-  glDisableVertexAttribArray attr_pos;
+//  glDrawArrays (GL_TRIANGLES, (GLint)0, (GLsizei)3);
+//  glDisableVertexAttribArray attr_pos;
 //  glDisableVertexAttribArray attr_color
 end // end of [draw]
 
