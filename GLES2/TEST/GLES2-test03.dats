@@ -83,9 +83,9 @@ var view_roty = (GLfloat)0.0f
 val (pf_view_roty | ()) =
   vbox_make_view_ptr {GLfloat} (view@ view_roty | &view_roty)
 // end of [prval]
-var view_dist = (GLfloat)1.0f
-val (pf_view_dist | ()) =
-  vbox_make_view_ptr {GLfloat} (view@ view_dist | &view_dist)
+var view_rotz = (GLfloat)0.0f
+val (pf_view_rotz | ()) =
+  vbox_make_view_ptr {GLfloat} (view@ view_rotz | &view_rotz)
 // end of [prval]
 
 extern
@@ -117,17 +117,15 @@ in
       in
         view_rotx := (GLfloat)(F view_rotx - 5.0f)
       end
-    | 4 => (*increase scale*) let
-        prval vbox pf_at = pf_view_dist
-        val s = F view_dist + 0.25f
+    | 4 => (*z-axis*) let
+        prval vbox pf_at = pf_view_rotz
       in
-        view_dist := (GLfloat)(if s > 10.0f then 10.0f else s)
+        view_rotz := (GLfloat)(F view_rotz - 5.0f)
       end
-    | 5 => (*decrease scale*) let
-        prval vbox pf_at = pf_view_dist
-        val s = F view_dist - 0.25f
+    | 5 => (*z-axis*) let
+        prval vbox pf_at = pf_view_rotz
       in
-        view_dist := (GLfloat)(if s < 0.1f then 0.1f else s)
+        view_rotz := (GLfloat)(F view_rotz + 5.0f)
       end
   end // end of [if]
 end // end of [keypress]
@@ -323,9 +321,8 @@ implement index_convert {n} (A, n, res, resz) = let
   } // end of [where]
   val [l:addr] (pf_gc, pf_arr | p) = array_ptr_alloc_tsz {GLuint} (m, tsz)
 
-  fn __cast (x: size_t, n: size_t):<!exn> GLuint = let
-    // useless!
-//    val () = assert_errmsg (x < n, "[index_convert]: index out of range")
+  fn __cast (x: size_t):<!exn,cloref> GLuint = let
+    val () = assert_errmsg (x < n, "[index_convert]: index out of range")
   in
     cast_size_to_GLuint x
   end // end of [__cast]
@@ -338,7 +335,7 @@ implement index_convert {n} (A, n, res, resz) = let
     , n: size_t n
     , p_arr: ptr l
     , m: size_t m
-    ) :<!exn> (array_v (GLuint, m, l) | void) =
+    ) :<!exn,cloref> (array_v (GLuint, m, l) | void) =
     if n > 0 then let
       prval (pf_at, pf2_src) = array_v_uncons {triangle} (pf_src)
       prval () = mul_pos_pos_pos (pf_mul)
@@ -347,15 +344,15 @@ implement index_convert {n} (A, n, res, resz) = let
       var p = p_arr
 
       prval (pf1_at, pf2_arr) = array_v_uncons {GLuint?} (pf_arr)
-      val () = !p := __cast (v0.vidx, n)
+      val () = !p := __cast v0.vidx
       val () = p := p + sizeof<GLuint>
 
       prval (pf2_at, pf2_arr) = array_v_uncons {GLuint?} (pf2_arr)
-      val () = !p := __cast (v1.vidx, n)
+      val () = !p := __cast v1.vidx
       val () = p := p + sizeof<GLuint>
 
       prval (pf3_at, pf2_arr) = array_v_uncons {GLuint?} (pf2_arr)
-      val () = !p := __cast (v2.vidx, n)
+      val () = !p := __cast v2.vidx
       val () = p := p + sizeof<GLuint>
 
       val (pf3_arr | ()) = loop (pf2_arr, pf2_src, pf2_mul | p_src + sizeof<triangle>, n-1, p, m-3)
@@ -504,6 +501,58 @@ end // end of [init]
 (* ****** ****** *)
 // miscellaneous matrix-related functions
 
+typedef GLmat4 = @[GLfloat][16]
+
+%{^
+void
+multiply (ats_ref_type m1, ats_ref_type n1) {
+   GLfloat *m = (GLfloat *)m1;
+   GLfloat *n = (GLfloat *)n1;
+   GLfloat tmp[16];
+   const GLfloat *row, *column;
+   div_t d;
+   int i, j;
+
+   for (i = 0; i < 16; i++) {
+      tmp[i] = 0;
+      d = div(i, 4);
+      row = n + d.quot * 4;
+      column = m + d.rem;
+      for (j = 0; j < 4; j++)
+	 tmp[i] += row[j] * column[j * 4];
+   }
+   memcpy(m, &tmp, sizeof tmp);
+}
+%}
+
+extern
+fun mat_mult (m: &GLmat4, n: &GLmat4)
+  :<> void = "multiply"
+
+fun mat_rot .< >. (
+    m: &GLmat4, a: GLfloat, x: GLfloat, y: GLfloat, z: GLfloat
+  ) :<> void = let
+  val a = float_of a
+  val x = float_of x and y = float_of y and z = float_of z
+  val s = sinf a and c = cosf a
+  #define G GLfloat
+  var !p_r = @[GLfloat](
+    G (x * x * (1.0f - c) + c),     G (y * x * (1.0f - c) + z * s), G (x * z * (1.0f - c) - y * s), G 0.0f,
+    G (x * y * (1.0f - c) - z * s), G (y * y * (1.0f - c) + c),     G (y * z * (1.0f - c) + x * s), G 0.0f, 
+    G (x * z * (1.0f - c) + y * s), G (y * z * (1.0f - c) - x * s), G (z * z * (1.0f - c) + c), G 0.0f,
+    G 0.0f, G 0.0f, G 0.0f, G 1.0f
+  ) // end of [var]
+in
+  mat_mult (m, !p_r)
+end
+
+fn mat_trn (m: &GLmat4, x: GLfloat, y: GLfloat, z: GLfloat):<> void = let
+  val S = (GLfloat)1.0f and Z = (GLfloat)0.0f
+  var !p_t = @[GLfloat](S,Z,Z,Z,  Z,S,Z,Z, Z,Z,S,Z, x,y,z,S)
+in
+  mat_mult (m, !p_t)
+end // end of [mat_trn]
+
 fn make_projection_matrix (
     fovy: float, aspect: float, near: float, far: float
   , m: &(@[GLfloat?][16]) >> @[GLfloat][16]
@@ -535,94 +584,6 @@ in
   m.[15] :=  (GLfloat) 1.0f
 end // end of [make_projection_matrix]
 
-fn make_x_rot_matrix (angle: GLfloat, m: &(@[GLfloat?][16]) >> @[GLfloat][16]):<> void = let
-  val c = (GLfloat) (cosf (float_of angle * 3.14f / 180.0f))
-  val s = (GLfloat) (sinf (float_of angle * 3.14f / 180.0f))
-  val () = array_ptr_initialize_elt<GLfloat> (m, size1_of_int1 16, (GLfloat)0.0f)  
-in
-  m.[0] := (GLfloat)1.0f;
-  m.[5] := c;
-  m.[6] := (GLfloat)(~float_of s);
-  m.[9] := s;
-  m.[10] := c;
-  m.[15] := (GLfloat)1.0f
-end // end of [make_x_rot_matrix]
-
-fn make_y_rot_matrix (angle: GLfloat, m: &(@[GLfloat?][16]) >> @[GLfloat][16]):<> void = let
-  val c = (GLfloat) (cosf (float_of angle * 3.14f / 180.0f))
-  val s = (GLfloat) (sinf (float_of angle * 3.14f / 180.0f))
-  val () = array_ptr_initialize_elt<GLfloat> (m, size1_of_int1 16, (GLfloat)0.0f)
-in
-  m.[0] := c;
-  m.[2] := s;
-  m.[5] := (GLfloat)1.0f;
-  m.[8] := (GLfloat)(~float_of s);
-  m.[10] := c;
-  m.[15] := (GLfloat)1.0f
-end // end of [make_y_rot_matrix]
-
-fn make_trans_matrix (
-  xt: GLfloat, yt: GLfloat, zt: GLfloat, m: &(@[GLfloat?][16]) >> @[GLfloat][16]
-) :<> void = let
-  val () = array_ptr_initialize_elt<GLfloat> (m, 16, (GLfloat)0.0f)
-in
-  m.[0] := (GLfloat)1.0f;
-  m.[3] := xt;
-  m.[5] := (GLfloat)1.0f;
-  m.[7] := yt;
-  m.[10] := zt;
-  m.[11] := (GLfloat)1.0f;
-  m.[15] := (GLfloat)1.0f
-end // end of [make_trans_matrix]
-
-fn make_scale_matrix (
-  xs: GLfloat, ys: GLfloat, zs: GLfloat, m: &(@[GLfloat?][16]) >> @[GLfloat][16]
-) :<> void = let
-  val () = array_ptr_initialize_elt<GLfloat> (m, 16, (GLfloat)0.0f)
-in
-  m.[0] := xs;
-  m.[5] := ys;
-  m.[10] := zs;
-  m.[15] := (GLfloat)1.0f
-end // end of [make_scale_matrix]
-
-fn mul_matrix (
-  p: &(@[GLfloat?][16]) >> @[GLfloat][16]
-, a: &(@[GLfloat][16])
-, b: &(@[GLfloat][16])
-) : void = let
-  #define F float_of
-  #define G GLfloat_of_float
-  // this is only for the sake of making the code below typecheck!
-  val () = array_ptr_initialize_elt<GLfloat> (p, 16, G 0.0f)
-
-  val ai0 = F a.[0] and ai1 = F a.[1] and ai2 = F a.[2] and ai3 = F a.[3]
-  val () = p.[0] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = p.[1] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = p.[2] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = p.[3] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
-
-  val ai0 = F a.[4] and ai1 = F a.[5] and ai2 = F a.[6] and ai3 = F a.[7]
-  val () = p.[4] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = p.[5] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = p.[6] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = p.[7] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])  
-
-  val ai0 = F a.[8] and ai1 = F a.[9] and ai2 = F a.[10] and ai3 = F a.[11]
-  val () = p.[8] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = p.[9] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = p.[10] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = p.[11] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
-
-  val ai0 = F a.[12] and ai1 = F a.[13] and ai2 = F a.[14] and ai3 = F a.[15]
-  val () = p.[12] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = p.[13] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = p.[14] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = p.[15] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
-in
-  ()
-end // end of [mul_matrix]
-
 (* ****** ****** *)
 
 extern
@@ -638,68 +599,41 @@ implement draw () = let
   , (GLfloat)0.0f, (GLfloat)1.0f, (GLfloat)0.0f
   , (GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)1.0f
   ) // end of [!p_colors]
-  var !p_proj = @[GLfloat][16]() and !p_model = @[GLfloat][16]() and !p_view = @[GLfloat][16]()
+  var !p_proj = @[GLfloat][16]()
+  var !p_modelview with pf_modelview = @[GLfloat][16]()
   val () = () where {
     val w = winx where { prval vbox pf_at = pf_view_winx }
     val h = winy where { prval vbox pf_at = pf_view_winy }
     val () = glViewport (GLint_of_int1 0, GLint_of_int1 0,
                          GLsizei_of_int1 (int1_of_int w), GLsizei_of_int1 (int1_of_int h))
-    val () = make_projection_matrix (
-      45.0f
-    , float_of w / float_of h
-    , 1.0f, 300.0f, !p_proj
-    ) // end of [val]
+    val () = make_projection_matrix (30.0f, float_of w / float_of h, 1.0f, 3000.0f, !p_proj)
   } // end of [where]
   val () = () where {
-    var !p_a = @[GLfloat][16]() and !p_b = @[GLfloat][16]()
-    var !p_s = @[GLfloat][16]() and !p_t = @[GLfloat][16]()
-    val () = make_x_rot_matrix ((GLfloat)(~float_of view_rotx), !p_a) where { prval vbox pf = pf_view_rotx }
-    val () = make_y_rot_matrix ((GLfloat)(~float_of view_roty), !p_b) where { prval vbox pf = pf_view_roty }
-    val () = make_scale_matrix (view_dist, view_dist, view_dist, !p_s) where {
-      prval vbox pf = pf_view_dist
+    val one = GLfloat_of_float 1.0f
+    val zero = GLfloat_of_float 0.0f
+    #define F float_of
+    val () = array_ptr_copy_tsz (!p_proj, !p_modelview, size1_of_int1 16, sizeof<GLfloat>)
+    val () = mat_trn (!p_modelview, (GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)~5.0f)
+    val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_rotx / 360.0f), one, zero, zero) where {
+      prval vbox pf = pf_view_rotx
     } // end of [where]
-    val () = mul_matrix (!p_t, !p_a, !p_b)
-    val () = mul_matrix (!p_model, !p_s, !p_t)
+    val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_roty / 360.0f), zero, one, zero) where {
+      prval vbox pf = pf_view_roty
+    } // end of [where]
+    val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_rotz / 360.0f), zero, zero, one) where {
+      prval vbox pf = pf_view_rotz
+    } // end of [where]
   }
-  val () = make_trans_matrix ((GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)10.0f, !p_view)
 in
   // set model-view-projection
   () where {
-    var !p_mat with pf_mat = @[GLfloat][16]()
-    var !p_tmp = @[GLfloat][16]()
-    // calculate...
-    val () = mul_matrix (!p_tmp, !p_view, !p_model)
-    val () = mul_matrix (!p_mat, !p_proj, !p_tmp)
-    // ...and set
-    prval pf_mat1 = array_v_sing (pf_mat)
+    prval pf_mat1 = array_v_sing (pf_modelview)
     val uni = let prval vbox pf_um = pf_u_matrix in u_matrix end
-    val () = glUniformMatrix4fv (uni, (GLsizei)1, GL_FALSE, !p_mat)
-    prval () = pf_mat := array_v_unsing pf_mat1
+    val () = glUniformMatrix4fv (uni, (GLsizei)1, GL_FALSE, !p_modelview)
+    prval () = pf_modelview := array_v_unsing pf_mat1
   };
   glClear (GL_COLOR_BUFFER_BIT lor GL_DEPTH_BUFFER_BIT);
   the_gpumesh_draw ()
-(*
-  () where {
-    prval pfmul = mul_make {3,3} ()
-    prval pfmat = matrix_v_of_array_v {GLfloat} (pfmul, pf_verts)
-    val () = glVertexAttribPointer (pfmat | attr_pos, (GLint)3, GL_FLOAT, GL_FALSE, (GLsizei)0, p_verts)
-    prval (pfmul', pfarr) = array_v_of_matrix_v {GLfloat} (pfmat)
-    prval () = mul_isfun (pfmul, pfmul')
-    prval () = pf_verts := pfarr
-  }; // end of [where]
-  () where {
-    prval pfmul = mul_make {3,3} ()
-    prval pfmat = matrix_v_of_array_v {GLfloat} (pfmul, pf_colors)
-    val () = glVertexAttribPointer (pfmat | attr_color, (GLint)3, GL_FLOAT, GL_FALSE, (GLsizei)0, p_colors)
-    prval (pfmul', pfarr) = array_v_of_matrix_v {GLfloat} (pfmat)
-    prval () = mul_isfun (pfmul, pfmul')
-    prval () = pf_colors := pfarr
-  }; *) // end of [where]
-//  glEnableVertexAttribArray attr_pos;
-//  glEnableVertexAttribArray attr_color;
-//  glDrawArrays (GL_TRIANGLES, (GLint)0, (GLsizei)3);
-//  glDisableVertexAttribArray attr_pos;
-//  glDisableVertexAttribArray attr_color
 end // end of [draw]
 
 (* ****** ****** *)
