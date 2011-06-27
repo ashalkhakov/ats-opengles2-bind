@@ -6,11 +6,8 @@
 ** - mesh loading
 ** - setting up modelview and projection matrices for 3D
 ** - (primitive) camera control:
-**   use arrows to spin the mesh, 'a' to scale it up, 'z' to scale it down
-*)
-
-(*
-roadblock: something is wrong with matrices!
+**   use arrows and 'a'/'z' to spin the mesh
+** TODO: incorporate v, vt, vn, vnt rendering (textured/lit)
 *)
 
 staload "libc/SATS/math.sats"
@@ -89,45 +86,41 @@ val (pf_view_rotz | ()) =
 // end of [prval]
 
 extern
-fun keypress {i:int | i >= 0; i <= 1} (state: int i, code: natLt 6): void = "keypress"
-// state = 1 means key has been pressed
-// state = 0 means key has been released
-implement keypress (state, code) = let
+fun keypress (code: natLt 6): void = "keypress"
+implement keypress (code) = let
   #define F float_of_GLfloat
 in
-  if state = 1 then begin
-    case+ code of
-    | 0 => (*left*) let
-        prval vbox pf_aty = pf_view_roty
-      in
-        view_roty := (GLfloat)(F view_roty + 5.0f)
-      end
-    | 1 => (*right*) let
-        prval vbox pf_aty = pf_view_roty
-      in
-        view_roty := (GLfloat)(F view_roty - 5.0f)
-      end
-    | 2 => (*up*) let
-        prval vbox pf_atx = pf_view_rotx
-      in
-        view_rotx := (GLfloat)(F view_rotx + 5.0f)
-      end
-    | 3 => (*down*) let
-        prval vbox pf_atx = pf_view_rotx
-      in
-        view_rotx := (GLfloat)(F view_rotx - 5.0f)
-      end
-    | 4 => (*z-axis*) let
-        prval vbox pf_at = pf_view_rotz
-      in
-        view_rotz := (GLfloat)(F view_rotz - 5.0f)
-      end
-    | 5 => (*z-axis*) let
-        prval vbox pf_at = pf_view_rotz
-      in
-        view_rotz := (GLfloat)(F view_rotz + 5.0f)
-      end
-  end // end of [if]
+  case+ code of
+  | 0 => (*left*) let
+      prval vbox pf_aty = pf_view_roty
+    in
+      view_roty := (GLfloat)(F view_roty + 5.0f)
+    end
+  | 1 => (*right*) let
+      prval vbox pf_aty = pf_view_roty
+    in
+      view_roty := (GLfloat)(F view_roty - 5.0f)
+    end
+  | 2 => (*up*) let
+      prval vbox pf_atx = pf_view_rotx
+    in
+      view_rotx := (GLfloat)(F view_rotx + 5.0f)
+    end
+  | 3 => (*down*) let
+      prval vbox pf_atx = pf_view_rotx
+    in
+      view_rotx := (GLfloat)(F view_rotx - 5.0f)
+    end
+  | 4 => (*z-axis*) let
+      prval vbox pf_at = pf_view_rotz
+    in
+      view_rotz := (GLfloat)(F view_rotz - 5.0f)
+    end
+  | 5 => (*z-axis*) let
+      prval vbox pf_at = pf_view_rotz
+    in
+      view_rotz := (GLfloat)(F view_rotz + 5.0f)
+    end
 end // end of [keypress]
 
 (* ****** ****** *)
@@ -503,31 +496,36 @@ end // end of [init]
 
 typedef GLmat4 = @[GLfloat][16]
 
-%{^
-void
-multiply (ats_ref_type m1, ats_ref_type n1) {
-   GLfloat *m = (GLfloat *)m1;
-   GLfloat *n = (GLfloat *)n1;
-   GLfloat tmp[16];
-   const GLfloat *row, *column;
-   div_t d;
-   int i, j;
+fun mat_mult .< >. (b: &GLmat4, a: &GLmat4):<> void = let
+  #define F float_of
+  #define G GLfloat_of_float
+  var !p = @[GLfloat][16](G 0.0f)
+  val ai0 = F a.[0] and ai1 = F a.[1] and ai2 = F a.[2] and ai3 = F a.[3]
+  val () = !p.[0] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
+  val () = !p.[1] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
+  val () = !p.[2] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
+  val () = !p.[3] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
 
-   for (i = 0; i < 16; i++) {
-      tmp[i] = 0;
-      d = div(i, 4);
-      row = n + d.quot * 4;
-      column = m + d.rem;
-      for (j = 0; j < 4; j++)
-	 tmp[i] += row[j] * column[j * 4];
-   }
-   memcpy(m, &tmp, sizeof tmp);
-}
-%}
+  val ai0 = F a.[4] and ai1 = F a.[5] and ai2 = F a.[6] and ai3 = F a.[7]
+  val () = !p.[4] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
+  val () = !p.[5] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
+  val () = !p.[6] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
+  val () = !p.[7] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])  
 
-extern
-fun mat_mult (m: &GLmat4, n: &GLmat4)
-  :<> void = "multiply"
+  val ai0 = F a.[8] and ai1 = F a.[9] and ai2 = F a.[10] and ai3 = F a.[11]
+  val () = !p.[8] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
+  val () = !p.[9] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
+  val () = !p.[10] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
+  val () = !p.[11] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
+
+  val ai0 = F a.[12] and ai1 = F a.[13] and ai2 = F a.[14] and ai3 = F a.[15]
+  val () = !p.[12] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
+  val () = !p.[13] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
+  val () = !p.[14] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
+  val () = !p.[15] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
+in
+  array_ptr_copy_tsz (!p, b, size1_of_int1 16, sizeof<GLfloat>)
+end // end of [mat_mult]
 
 fun mat_rot .< >. (
     m: &GLmat4, a: GLfloat, x: GLfloat, y: GLfloat, z: GLfloat
@@ -544,7 +542,7 @@ fun mat_rot .< >. (
   ) // end of [var]
 in
   mat_mult (m, !p_r)
-end
+end // end of [mat_rot]
 
 fn mat_trn (m: &GLmat4, x: GLfloat, y: GLfloat, z: GLfloat):<> void = let
   val S = (GLfloat)1.0f and Z = (GLfloat)0.0f
@@ -553,61 +551,56 @@ in
   mat_mult (m, !p_t)
 end // end of [mat_trn]
 
-fn make_projection_matrix (
+fn mat_persp (
     fovy: float, aspect: float, near: float, far: float
-  , m: &(@[GLfloat?][16]) >> @[GLfloat][16]
+  , m: &GLmat4? >> GLmat4
   ):<> void = let
   val ymax = near * tanf (fovy * float_of M_PI / 180.0f)
   val ymin = ~ymax
   val xmin = ymin * aspect
   val xmax = ymax * aspect
-  val () = array_ptr_initialize_elt<GLfloat> (m, size1_of_int1 16, (GLfloat)0.0f)
+  val Z = GLfloat 0.0f
+  #define G GLfloat_of_float
 in
-  m.[0] := GLfloat ((2.0f * near) / (xmax - xmin));
-  m.[4] := GLfloat 0.0f;
-  m.[8] := GLfloat ((xmax + xmin) / (xmax - xmin));
-  m.[12] := GLfloat 0.0f;
+  m.[0] := G ((2.0f * near) / (xmax - xmin));
+  m.[1] := Z;
+  m.[2] := Z;
+  m.[3] := Z;
 
-  m.[1] := GLfloat 0.0f;
-  m.[5] := GLfloat ((2.0f * near) / (ymax - ymin));
-  m.[9] := GLfloat ((ymax + ymin) / (ymax - ymin));
-  m.[13] := GLfloat 0.0f;
+  m.[4] := Z;
+  m.[5] := G ((2.0f * near) / (ymax - ymin));
+  m.[6] := Z;
+  m.[7] := Z;
 
-  m.[2] := GLfloat 0.0f;
-  m.[6] := GLfloat 0.0f;
-  m.[10] := GLfloat (~(far + near) / (far - near));
-  m.[14] := GLfloat (~(2.0f * far * near) / (far - near));
+  m.[8] := G ((xmax + xmin) / (xmax - xmin));
+  m.[9] := G ((ymax + ymin) / (ymax - ymin));
+  m.[10] := G (~(far + near) / (far - near));
+  m.[11] := G ~1.0f;
 
-  m.[3] := GLfloat 0.0f;
-  m.[7] := GLfloat 0.0f;
-  m.[11] := (GLfloat)~1.0f;
-  m.[15] :=  (GLfloat) 1.0f
-end // end of [make_projection_matrix]
+  m.[12] := Z;
+  m.[13] := Z;
+  m.[14] := G (~(2.0f * far * near) / (far - near));
+  m.[15] :=  G 1.0f;
+  __cast (m) where {
+    // FIXME: no time to prove it, but we could
+    extern castfn __cast (m: &GLmat4? >> GLmat4):<> void
+  } // end of [where]
+end // end of [mat_persp]
 
 (* ****** ****** *)
 
 extern
 fun draw (): void = "draw"
 implement draw () = let
-  var !p_verts with pf_verts = @[GLfloat](
-    (GLfloat)~1.0f, (GLfloat)~1.0f, (GLfloat)~1.0f
-  , (GLfloat)1.0f, (GLfloat)~1.0f, (GLfloat)~1.0f
-  , (GLfloat)0.0f, (GLfloat)1.0f, (GLfloat)~1.0f
-  ) // end of [!p_verts]
-  var !p_colors with pf_colors = @[GLfloat](
-    (GLfloat)1.0f, (GLfloat)0.0f, (GLfloat)0.0f
-  , (GLfloat)0.0f, (GLfloat)1.0f, (GLfloat)0.0f
-  , (GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)1.0f
-  ) // end of [!p_colors]
   var !p_proj = @[GLfloat][16]()
-  var !p_modelview with pf_modelview = @[GLfloat][16]()
   val () = () where {
     val w = winx where { prval vbox pf_at = pf_view_winx }
     val h = winy where { prval vbox pf_at = pf_view_winy }
     val () = glViewport (GLint_of_int1 0, GLint_of_int1 0,
                          GLsizei_of_int1 (int1_of_int w), GLsizei_of_int1 (int1_of_int h))
-    val () = make_projection_matrix (30.0f, float_of w / float_of h, 1.0f, 3000.0f, !p_proj)
+    val () = mat_persp (30.0f, float_of w / float_of h, 1.0f, 300.0f, !p_proj)
   } // end of [where]
+  var !p_modelview with pf_modelview = @[GLfloat][16]()
   val () = () where {
     val one = GLfloat_of_float 1.0f
     val zero = GLfloat_of_float 0.0f
@@ -623,15 +616,13 @@ implement draw () = let
     val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_rotz / 360.0f), zero, zero, one) where {
       prval vbox pf = pf_view_rotz
     } // end of [where]
-  }
-in
+  } // end of [where]
   // set model-view-projection
-  () where {
-    prval pf_mat1 = array_v_sing (pf_modelview)
-    val uni = let prval vbox pf_um = pf_u_matrix in u_matrix end
-    val () = glUniformMatrix4fv (uni, (GLsizei)1, GL_FALSE, !p_modelview)
-    prval () = pf_modelview := array_v_unsing pf_mat1
-  };
+  prval pf_mat1 = array_v_sing (pf_modelview)
+  val uni = let prval vbox pf_um = pf_u_matrix in u_matrix end
+  val () = glUniformMatrix4fv (uni, (GLsizei)1, GL_FALSE, !p_modelview)
+  prval () = pf_modelview := array_v_unsing pf_mat1
+in
   glClear (GL_COLOR_BUFFER_BIT lor GL_DEPTH_BUFFER_BIT);
   the_gpumesh_draw ()
 end // end of [draw]
@@ -641,11 +632,9 @@ end // end of [draw]
 // new window size or exposure
 extern
 fun reshape {w,h:pos} (width: int w, height: int h): void = "reshape"
-implement reshape (w, h) = let
-  val () = winx := w where { prval vbox pf_at = pf_view_winx }
-  val () = winy := h where { prval vbox pf_at = pf_view_winy }
-in
-  // nothing
+implement reshape (w, h) = begin
+  winx := w where { prval vbox pf_at = pf_view_winx };
+  winy := h where { prval vbox pf_at = pf_view_winy };
 end
 
 (* ****** ****** *)
@@ -719,7 +708,7 @@ make_x_window(Display *x_dpy, EGLDisplay egl_dpy,
    attr.background_pixel = 0;
    attr.border_pixel = 0;
    attr.colormap = XCreateColormap( x_dpy, root, visInfo->visual, AllocNone);
-   attr.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask;
+   attr.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask;
    mask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask;
 
    win = XCreateWindow( x_dpy, root, 0, 0, width, height,
@@ -816,25 +805,25 @@ event_loop(Display *dpy, Window win,
             code = XLookupKeysym(&event.xkey, 0);
 	    switch (code) {
 	    case XK_Left:
-	      keypress(1, 0);
+	      keypress(0);
 	      break;
 	    case XK_Right:
-	      keypress(1, 1);
+	      keypress(1);
 	      break;
 	    case XK_Up:
-	      keypress(1, 2);
+	      keypress(2);
 	      break;
 	    case XK_Down:
-	      keypress(1, 3);
+	      keypress(3);
 	      break;
 	    default:
                r = XLookupString(&event.xkey, buffer, sizeof(buffer),
                                  NULL, NULL);
 	       if (buffer[0] == 'a' || buffer[0] == 'A') {
-		 keypress(1, 4);
+		 keypress(4);
 	       }
 	       else if (buffer[0] == 'z' || buffer[0] == 'Z') {
-		 keypress(1, 5);
+		 keypress(5);
 	       }
                else if (buffer[0] == 27) {
                   /* escape */
@@ -845,28 +834,6 @@ event_loop(Display *dpy, Window win,
          }
          redraw = 1;
          break;
-      case KeyRelease:
-	if (!X11_KeyRepeat (dpy, &event)) {
-	  char buffer[10];
-	  int r, code;
-	  code = XLookupKeysym(&event.xkey, 0);
-	  switch (code) {
-	  case XK_Left:
-	    keypress(0, 0);
-	    break;
-	  case XK_Right:
-	    keypress(0, 1);
-	    break;
-	  case XK_Up:
-	    keypress(0, 2);
-	    break;
-	  case XK_Down:
-	    keypress(0, 3);
-	    break;
-	  }
-	}
-	redraw = 1;
-	break;
       default:
 	; /*no-op*/
       }
