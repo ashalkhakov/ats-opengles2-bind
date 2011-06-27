@@ -31,7 +31,7 @@ all:: cleanall
 checkall::
 cleanall:: clean
 
-#######
+######
 
 checkall:: test01 test02 test03
 cleanall:: ; $(RMF) test01 test02 test03
@@ -47,6 +47,7 @@ util_dats.o: DATS/util.dats
 obj_sats.o: SATS/obj.sats
 	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o $@ -c SATS/obj.sats
+######
 
 obj_lats.dats: DATS/obj.lats
 	$(ATSLEX) < $< > $@
@@ -54,17 +55,33 @@ obj_lats_dats.o: obj_lats.dats obj_sats.o
 	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o $@ -c obj_lats.dats obj_sats.o
 
+######
+
+mat4.o: mat4_sats.o mat4_dats.o
+	ld -r -o $@ mat4_sats.o mat4_dats.o
+
+mat4_sats.o: SATS/mat4.sats
+	$(ATSCC) -IATS $(HOME) -I $(HOME) -o $@ -c SATS/mat4.sats -lm
+mat4_dats.o: DATS/mat4.dats
+	$(ATSCC) -IATS $(HOME) -I $(HOME) -o $@ -c DATS/mat4.dats -lm
+
+######
+
 test01: GLES2-test01.dats util.o
 	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o test01 GLES2-test02.dats util.o \
 	  $(ATSMISCCTRB) -lm -lX11 -lEGL -lGLESv2
+
+######
 
 test02: GLES2-test02.dats util.o
 	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o test02 GLES2-test02.dats util.o \
 	  $(ATSMISCCTRB) -lm -lX11 -lEGL -lGLESv2
 
-test03: GLES2-test03.dats util.o obj_lats_dats.o
+######
+
+test03: GLES2-test03.dats util.o obj_lats_dats.o mat4.o
 	$(ATSCC) -IATS $(HOME) -I $(HOME) \
 	  -o test03 GLES2-test03.dats \
 	   prelude/DATS/list_vt.dats libats/DATS/rarray.dats libats/SATS/rarray.sats libc/SATS/stdlib.sats libc/SATS/fcntl.sats \
@@ -72,8 +89,8 @@ test03: GLES2-test03.dats util.o obj_lats_dats.o
 	   libats/lex/lexing.dats libats/lex/lexing.sats libats/lex/tables.dats \
 	   libats/SATS/genarrays.sats libats/DATS/genarrays.dats libats/DATS/fmatrix.dats libats/SATS/fmatrix.sats \
 	   prelude/DATS/reference.dats \
-	  $(ATSMISCCTRB) util.o obj_lats_dats.o \
-	  -lm -lX11 -lEGL -lGLESv2 -lats_lex
+	  $(ATSMISCCTRB) util.o obj_lats_dats.o mat4.o \
+	  -lX11 -lEGL -lGLESv2 -lats_lex
 
 #######
 

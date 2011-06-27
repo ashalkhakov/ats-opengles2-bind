@@ -3,14 +3,14 @@
 ** mesh vertices as well as connectivity.
 **
 ** New features in this example:
-** - mesh loading
+** - mesh loading (pass [-obj <filename>] as a parameter)
 ** - setting up modelview and projection matrices for 3D
 ** - (primitive) camera control:
 **   use arrows and 'a'/'z' to spin the mesh
 ** TODO: incorporate v, vt, vn, vnt rendering (textured/lit)
 *)
 
-staload "libc/SATS/math.sats"
+staload "libc/SATS/math.sats" // M_PI
 
 staload _(*anonymous*) = "prelude/DATS/array.dats"
 staload _(*anonymous*) = "prelude/DATS/reference.dats"
@@ -24,7 +24,7 @@ staload _(*anonymous*) = "libats/DATS/genarrays.dats"
 staload "GLES2/SATS/gl2.sats"
 
 staload "GLES2/TEST/SATS/util.sats"
-
+staload "GLES2/TEST/SATS/mat4.sats"
 staload "GLES2/TEST/SATS/obj.sats"
 
 (* ****** ******* *)
@@ -492,102 +492,6 @@ in
 end // end of [init]
 
 (* ****** ****** *)
-// miscellaneous matrix-related functions
-
-typedef GLmat4 = @[GLfloat][16]
-
-fun mat_mult .< >. (b: &GLmat4, a: &GLmat4):<> void = let
-  #define F float_of
-  #define G GLfloat_of_float
-  var !p = @[GLfloat][16](G 0.0f)
-  val ai0 = F a.[0] and ai1 = F a.[1] and ai2 = F a.[2] and ai3 = F a.[3]
-  val () = !p.[0] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = !p.[1] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = !p.[2] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = !p.[3] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
-
-  val ai0 = F a.[4] and ai1 = F a.[5] and ai2 = F a.[6] and ai3 = F a.[7]
-  val () = !p.[4] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = !p.[5] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = !p.[6] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = !p.[7] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])  
-
-  val ai0 = F a.[8] and ai1 = F a.[9] and ai2 = F a.[10] and ai3 = F a.[11]
-  val () = !p.[8] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = !p.[9] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = !p.[10] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = !p.[11] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
-
-  val ai0 = F a.[12] and ai1 = F a.[13] and ai2 = F a.[14] and ai3 = F a.[15]
-  val () = !p.[12] := G (ai0 * F b.[0] + ai1 * F b.[4] + ai2 * F b.[8] + ai3 * F b.[12]);
-  val () = !p.[13] := G (ai0 * F b.[1] + ai1 * F b.[5] + ai2 * F b.[9] + ai3 * F b.[13]);
-  val () = !p.[14] := G (ai0 * F b.[2] + ai1 * F b.[6] + ai2 * F b.[10] + ai3 * F b.[14]);
-  val () = !p.[15] := G (ai0 * F b.[3] + ai1 * F b.[7] + ai2 * F b.[11] + ai3 * F b.[15])
-in
-  array_ptr_copy_tsz (!p, b, size1_of_int1 16, sizeof<GLfloat>)
-end // end of [mat_mult]
-
-fun mat_rot .< >. (
-    m: &GLmat4, a: GLfloat, x: GLfloat, y: GLfloat, z: GLfloat
-  ) :<> void = let
-  val a = float_of a
-  val x = float_of x and y = float_of y and z = float_of z
-  val s = sinf a and c = cosf a
-  #define G GLfloat
-  var !p_r = @[GLfloat](
-    G (x * x * (1.0f - c) + c),     G (y * x * (1.0f - c) + z * s), G (x * z * (1.0f - c) - y * s), G 0.0f,
-    G (x * y * (1.0f - c) - z * s), G (y * y * (1.0f - c) + c),     G (y * z * (1.0f - c) + x * s), G 0.0f, 
-    G (x * z * (1.0f - c) + y * s), G (y * z * (1.0f - c) - x * s), G (z * z * (1.0f - c) + c), G 0.0f,
-    G 0.0f, G 0.0f, G 0.0f, G 1.0f
-  ) // end of [var]
-in
-  mat_mult (m, !p_r)
-end // end of [mat_rot]
-
-fn mat_trn (m: &GLmat4, x: GLfloat, y: GLfloat, z: GLfloat):<> void = let
-  val S = (GLfloat)1.0f and Z = (GLfloat)0.0f
-  var !p_t = @[GLfloat](S,Z,Z,Z,  Z,S,Z,Z, Z,Z,S,Z, x,y,z,S)
-in
-  mat_mult (m, !p_t)
-end // end of [mat_trn]
-
-fn mat_persp (
-    fovy: float, aspect: float, near: float, far: float
-  , m: &GLmat4? >> GLmat4
-  ):<> void = let
-  val ymax = near * tanf (fovy * float_of M_PI / 180.0f)
-  val ymin = ~ymax
-  val xmin = ymin * aspect
-  val xmax = ymax * aspect
-  val Z = GLfloat 0.0f
-  #define G GLfloat_of_float
-in
-  m.[0] := G ((2.0f * near) / (xmax - xmin));
-  m.[1] := Z;
-  m.[2] := Z;
-  m.[3] := Z;
-
-  m.[4] := Z;
-  m.[5] := G ((2.0f * near) / (ymax - ymin));
-  m.[6] := Z;
-  m.[7] := Z;
-
-  m.[8] := G ((xmax + xmin) / (xmax - xmin));
-  m.[9] := G ((ymax + ymin) / (ymax - ymin));
-  m.[10] := G (~(far + near) / (far - near));
-  m.[11] := G ~1.0f;
-
-  m.[12] := Z;
-  m.[13] := Z;
-  m.[14] := G (~(2.0f * far * near) / (far - near));
-  m.[15] :=  G 1.0f;
-  __cast (m) where {
-    // FIXME: no time to prove it, but we could
-    extern castfn __cast (m: &GLmat4? >> GLmat4):<> void
-  } // end of [where]
-end // end of [mat_persp]
-
-(* ****** ****** *)
 
 extern
 fun draw (): void = "draw"
@@ -605,15 +509,16 @@ implement draw () = let
     val one = GLfloat_of_float 1.0f
     val zero = GLfloat_of_float 0.0f
     #define F float_of
+    #define G GLfloat_of_float
     val () = array_ptr_copy_tsz (!p_proj, !p_modelview, size1_of_int1 16, sizeof<GLfloat>)
-    val () = mat_trn (!p_modelview, (GLfloat)0.0f, (GLfloat)0.0f, (GLfloat)~5.0f)
-    val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_rotx / 360.0f), one, zero, zero) where {
+    val () = mat_trn (!p_modelview, G 0.0f, G 0.0f, G ~5.0f)
+    val () = mat_rot (!p_modelview, G (2.0f * F M_PI * F view_rotx / 360.0f), one, zero, zero) where {
       prval vbox pf = pf_view_rotx
     } // end of [where]
-    val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_roty / 360.0f), zero, one, zero) where {
+    val () = mat_rot (!p_modelview, G (2.0f * F M_PI * F view_roty / 360.0f), zero, one, zero) where {
       prval vbox pf = pf_view_roty
     } // end of [where]
-    val () = mat_rot (!p_modelview, GLfloat (2.0f * F M_PI * F view_rotz / 360.0f), zero, zero, one) where {
+    val () = mat_rot (!p_modelview, G (2.0f * F M_PI * F view_rotz / 360.0f), zero, zero, one) where {
       prval vbox pf = pf_view_rotz
     } // end of [where]
   } // end of [where]
