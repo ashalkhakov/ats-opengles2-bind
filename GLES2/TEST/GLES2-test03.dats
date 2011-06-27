@@ -8,18 +8,13 @@
 ** - (primitive) camera control:
 **   use arrows and 'a'/'z' to spin the mesh
 ** TODO: incorporate v, vt, vn, vnt rendering (textured/lit)
+**       (but first, get some datasets with normals and TCs!)
 *)
 
-staload "libc/SATS/math.sats" // M_PI
+staload "libc/SATS/math.sats" // for [M_PI]
 
 staload _(*anonymous*) = "prelude/DATS/array.dats"
 staload _(*anonymous*) = "prelude/DATS/reference.dats"
-
-staload GA = "libats/SATS/genarrays.sats"
-stadef GEVEC = $GA.GEVEC
-stadef GEVEC_v = $GA.GEVEC_v
-
-staload _(*anonymous*) = "libats/DATS/genarrays.dats"
 
 staload "GLES2/SATS/gl2.sats"
 
@@ -88,39 +83,22 @@ val (pf_view_rotz | ()) =
 extern
 fun keypress (code: natLt 6): void = "keypress"
 implement keypress (code) = let
-  #define F float_of_GLfloat
+  fn add {l:addr} (
+      pf: vbox (GLfloat @ l)
+    | p: ptr l, d: float
+    ) :<!ref> void = let
+    prval vbox pf_at = pf
+  in
+    !p := GLfloat (float_of !p + d)
+  end // end of [add]
 in
   case+ code of
-  | 0 => (*left*) let
-      prval vbox pf_aty = pf_view_roty
-    in
-      view_roty := (GLfloat)(F view_roty + 5.0f)
-    end
-  | 1 => (*right*) let
-      prval vbox pf_aty = pf_view_roty
-    in
-      view_roty := (GLfloat)(F view_roty - 5.0f)
-    end
-  | 2 => (*up*) let
-      prval vbox pf_atx = pf_view_rotx
-    in
-      view_rotx := (GLfloat)(F view_rotx + 5.0f)
-    end
-  | 3 => (*down*) let
-      prval vbox pf_atx = pf_view_rotx
-    in
-      view_rotx := (GLfloat)(F view_rotx - 5.0f)
-    end
-  | 4 => (*z-axis*) let
-      prval vbox pf_at = pf_view_rotz
-    in
-      view_rotz := (GLfloat)(F view_rotz - 5.0f)
-    end
-  | 5 => (*z-axis*) let
-      prval vbox pf_at = pf_view_rotz
-    in
-      view_rotz := (GLfloat)(F view_rotz + 5.0f)
-    end
+  | 0 => add (pf_view_roty | &view_roty, 5.0f)
+  | 1 => add (pf_view_roty | &view_roty, ~5.0f)
+  | 2 => add (pf_view_rotx | &view_rotx, 5.0f)
+  | 3 => add (pf_view_rotx | &view_rotx, ~5.0f)
+  | 4 => add (pf_view_rotz | &view_rotz, ~5.0f)
+  | 5 => add (pf_view_rotz | &view_rotz, 5.0f)
 end // end of [keypress]
 
 (* ****** ****** *)
@@ -193,22 +171,12 @@ in
 end // end of [create_shaders]
 
 (* ****** ****** *)
-
-// index buffer
-viewtypedef gpuidx = @{
-  buf= GLbuffer  // buffer object (storage)
-, mode= GLenum   // GL_TRIANGLES, ...
-, count= GLsizei // total count of indices
-, type= [a:t@ype] GLenum_type a  // GL_UNSIGNED_INT, ...
-} // end of [gpuidx]
-
-// vertex buffer
-viewtypedef gpuvrt = @{
-  buf= GLbuffer                // buffer object (storage)
-, pos= GLsizei                 // offset to position
-, size= GLsizei                // element size (in [type])
-, type= [a:t@ype] GLenum_type a  // GL_FLOAT, ...
-} // end of [gpuvrt]
+// External function prototypes.
+// This is basically how we upload data to the GL: via calling
+// external functions introduced for our ad-hoc purposes.
+// The GL API defines some entry points which are difficult to handle
+// in ATS: while it may be done, the effort of programming against
+// such bindings would be too high.
 
 %{^
 ats_GLuint_type cast_size_to_GLuint (ats_size_type x) { return x; }
@@ -294,6 +262,26 @@ fun glDrawElementsBuffer {a:t@ype} (
 ) : void
   = "glDrawElementsBuffer"
 // end of [glDrawElementsBuffer]
+
+(* ****** ****** *)
+
+local
+
+// index buffer
+viewtypedef gpuidx = @{
+  buf= GLbuffer  // buffer object (storage)
+, mode= GLenum   // GL_TRIANGLES, ...
+, count= GLsizei // total count of indices
+, type= [a:t@ype] GLenum_type a  // GL_UNSIGNED_INT, ...
+} // end of [gpuidx]
+
+// vertex buffer
+viewtypedef gpuvrt = @{
+  buf= GLbuffer                // buffer object (storage)
+, pos= GLsizei                 // offset to position
+, size= GLsizei                // element size (in [type])
+, type= [a:t@ype] GLenum_type a  // GL_FLOAT, ...
+} // end of [gpuvrt]
 
 // TODO (perhaps): use smaller types if you can to conserve memory
 extern
@@ -405,10 +393,6 @@ in
   res.type := GL_FLOAT;
   m.verts := (pf_v, pf_vgc | n, vp)
 end // end of [mesh_upload_vertices]
-
-(* ****** ****** *)
-
-local
 
 dataviewtype gpumesh = gpumesh_some of (gpuidx, gpuvrt) | gpumesh_none of ()
 val the_gpumesh = ref<gpumesh> (gpumesh_none ())
@@ -540,7 +524,7 @@ fun reshape {w,h:pos} (width: int w, height: int h): void = "reshape"
 implement reshape (w, h) = begin
   winx := w where { prval vbox pf_at = pf_view_winx };
   winy := h where { prval vbox pf_at = pf_view_winy };
-end
+end // end of [reshape]
 
 (* ****** ****** *)
 

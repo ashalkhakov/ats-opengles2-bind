@@ -87,7 +87,6 @@ test03: GLES2-test03.dats util.o obj_lats_dats.o mat4.o
 	   prelude/DATS/list_vt.dats libats/DATS/rarray.dats libats/SATS/rarray.sats libc/SATS/stdlib.sats libc/SATS/fcntl.sats \
 	   libc/sys/SATS/types.sats \
 	   libats/lex/lexing.dats libats/lex/lexing.sats libats/lex/tables.dats \
-	   libats/SATS/genarrays.sats libats/DATS/genarrays.dats libats/DATS/fmatrix.dats libats/SATS/fmatrix.sats \
 	   prelude/DATS/reference.dats \
 	  $(ATSMISCCTRB) util.o obj_lats_dats.o mat4.o \
 	  -lX11 -lEGL -lGLESv2 -lats_lex
