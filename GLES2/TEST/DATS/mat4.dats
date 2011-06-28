@@ -85,8 +85,8 @@ end // end of [mat_trn]
 absviewtype arrinit_vt (a:viewt@ype, m:int, n:int, l:addr)
 
 extern
-fun{a:viewt@ype} arrinit_ptr_start {n:nat} {l:addr} (
-  pf_arr: array_v (a?, n, l) | p_arr: ptr l, n: size_t n
+fun arrinit_ptr_start {a:viewt@ype} {n:nat} {l:addr} (
+  pf_arr: array_v (a?, n, l) | p_arr: ptr l
 ) :<> arrinit_vt (a, n, 0, l)
 
 extern
@@ -116,7 +116,7 @@ assume arrinit_vt (
 
 in // in of [local]
 
-implement{a} arrinit_ptr_start {n} {l} (pf_arr | p_arr, n) = @{
+implement arrinit_ptr_start {a} {n} {l} (pf_arr | p_arr) = @{
   pf_ini= array_v_nil {a} ()
 , pf_mul= mul_make {0,sizeof a} ()
 , pf_rst= pf_arr
@@ -156,7 +156,7 @@ implement mat_persp (fovy, aspect, near, far, m) = let
     #define G GLfloat_of_float
     infixl *.
     #define *. arrinit_ptr_extend
-    val (pf_ai | ()) = arrinit_ptr_end (arrinit_ptr_start<GLfloat> (view@ m | &m, 16)
+    val (pf_ai | ()) = arrinit_ptr_end (arrinit_ptr_start {GLfloat} (view@ m | &m)
            *. G ((2.0f * near) / (xmax - xmin)) *. Z *. Z *. Z
            *. Z *. G ((2.0f * near) / (ymax - ymin)) *. Z *. Z
            *. G ((xmax + xmin) / (xmax - xmin)) *. G ((ymax + ymin) / (ymax - ymin)) *. G (~(far + near) / (far - near)) *. G ~1.0f
