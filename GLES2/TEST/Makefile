@@ -100,6 +100,7 @@ RMF = rm -f
 clean:
 	$(RMF) *~
 	$(RMF) *_?ats.c *_?ats.o
+	$(RMF) *.o
 	$(RMF) obj_lats.dats
 
 ###### end of [Makefile] #######

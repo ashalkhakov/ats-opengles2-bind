@@ -13,7 +13,7 @@ staload "GLES2/TEST/SATS/util.sats"
 
 #define SHADER_VERT "test02.vert"
 #define SHADER_FRAG "test02.frag"
-#define IMAGE "tex2d.tga"
+#define IMAGE "datasets/tex2d.tga"
 
 (* ****** ****** *)
 
