@@ -13,7 +13,6 @@ staload "GLES2/TEST/SATS/util.sats"
 
 #define SHADER_VERT "test02.vert"
 #define SHADER_FRAG "test02.frag"
-#define IMAGE "datasets/tex2d.tga"
 
 (* ****** ****** *)
 
@@ -139,12 +138,12 @@ in
 end
 
 extern
-fun init (): void = "init"
-implement init () = let
+fun init (filename: string): void = "init"
+implement init (filename) = let
   var tex: GLtexture // uninitialized
 in
   glGenTexture tex;
-  texture_from_file (tex, IMAGE);
+  texture_from_file (tex, filename);
   create_shaders (tex);
   glClearColor ((GLclampf)0.4f, (GLclampf)0.4f, (GLclampf)0.4f, (GLclampf)0.0f);
   assert_errmsg (glGetError () = GL_NO_ERROR, "[init]: glGetError() <> GL_NO_ERROR")
@@ -489,6 +488,7 @@ ats_void_type mainats (
    EGLint egl_major, egl_minor;
    int i;
    const char *s;
+   const char *imagename = "datasets/inv_weapon2.tga";
 
    for (i = 1; i < argc; i++) {
      if (strcmp(((char **)argv)[i], "-display") == 0) {
@@ -498,6 +498,10 @@ ats_void_type mainats (
      else if (strcmp(((char **)argv)[i], "-info") == 0) {
          printInfo = GL_TRUE;
       }
+     else if (strcmp(((char **)argv)[i], "-tga") == 0) {
+       imagename = ((char **)argv)[i+1]; // FIXME: reading past end?
+       i++;
+     }
       else {
          usage();
          return;
@@ -551,7 +555,7 @@ ats_void_type mainats (
       printf("GL_EXTENSIONS = %s\n", (char *) glGetString(GL_EXTENSIONS));
    }
 
-   init();
+   init((ats_ptr_type)imagename);
 
    /* Set initial projection/viewing transformation.
     * We can't be sure we'll get a ConfigureNotify event when the window
