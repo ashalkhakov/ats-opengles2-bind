@@ -22,8 +22,8 @@ At the time of writing, the examples only work against the OpenGL ES 2.0
 implementation as is available with Mesa on X11/GLX. Porting these programs
 to another platform should not pose too much difficulty, but that would entail
 a rewrite of the driver code (which does OpenGL context initialization
-and interaction with the underlying window system and is derived directly from
-Mesa example code).
+interaction with the underlying window system) that is derived directly from
+Mesa examples.
 
 Here's the list of examples:
 - test01: drawing a simple triangle with interpolated colors
