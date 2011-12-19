@@ -1,8 +1,12 @@
 /* ****** ****** */
-
+//
 // Author of the file: Artyom Shalkhakov
 // Starting time: May 13, 2011
-
+//
+/* ****** ****** */
+//
+// License: GNU LESSER GENERAL PUBLIC LICENSE version 2.1
+//
 /* ****** ****** */
 
 #ifndef ATSCTRB_GLES2_GL_CATS
@@ -35,6 +39,12 @@ typedef GLsizeiptr ats_GLsizeiptr_type;
 
 /* ****** ****** */
 
+#define atsctrb_GLtexture_zero() ((GLuint)0)
+#define atsctrb_GLtexture_is_zero(x) ((x) == ((GLuint)0))
+#define atsctrb_GLtexture_isnot_zero(x) ((x) > ((GLuint)0))
+
+/* ****** ****** */
+
 ATSinline()
 ats_bool_type
 atsctrb_eq_GLboolean_GLboolean
@@ -62,6 +72,18 @@ atsctrb_neq_GLenum_GLenum
   (GLenum x1, GLenum x2) {
   return (x1 != x2 ? ats_true_bool : ats_false_bool);
 } // end of [atsctrb_neq_GLenum_GLenum]
+
+//
+
+ATSinline()
+ats_GLboolean_type
+atsctrb_GLboolean_of_bool (ats_bool_type x) { return x? GL_TRUE : GL_FALSE ; }
+
+//
+
+ATSinline()
+ats_bool_type
+atsctrb_bool_of_GLboolean (ats_GLboolean_type x) { return x? ats_true_bool : ats_false_bool ; }
 
 //
 
@@ -106,6 +128,18 @@ atsctrb_GLsizei_of_size (ats_size_type x) { return x ; }
 ATSinline()
 ats_GLsizei_type
 atsctrb_GLsizei_of_int (int x) { return x ; }
+
+//
+
+ATSinline()
+ats_GLsizeiptr_type
+atsctrb_GLsizeiptr_of_uintptr (ats_uintptr_type x) { return (ats_GLsizeiptr_type) x ; }
+
+//
+
+ATSinline()
+ats_GLsizeiptr_type
+atsctrb_GLsizeiptr_of_int (ats_int_type x) { return x ; }
 
 //
 

@@ -1,13 +1,23 @@
 (*
 ** This demo displays a textured quad.
 *)
-staload "libc/SATS/math.sats"
+//
+// Author: Artyom Shakhakov (artyom DOT shalkhakov AT gmail DOT com)
+// Time: June, 2011
+//
 
+(* ****** ****** *)
+
+staload "libc/SATS/math.sats"
 staload _(*anonymous*) = "prelude/DATS/array.dats"
 
-staload "GLES2/SATS/gl2.sats"
+(* ****** ****** *)
 
-staload "GLES2/TEST/SATS/util.sats"
+staload "contrib/GLES2/SATS/gl2.sats"
+
+(* ****** ****** *)
+
+staload "SATS/util.sats"
 
 (* ****** ****** *)
 
@@ -81,7 +91,7 @@ end // end of [keypress]
 
 (* ****** ****** *)
 
-fun create_shaders (tex2d: GLtexture): void = let
+fun create_shaders (tex2d: GLtexture1): void = let
    var stat: GLint
    var fragShader = glCreateShader GL_FRAGMENT_SHADER
    val () = shader_from_file (fragShader, SHADER_FRAG)
@@ -125,7 +135,7 @@ fun create_shaders (tex2d: GLtexture): void = let
   val () = glDeleteShader fragShader
   val () = let
       extern castfn __leak1 (x: GLprogram): void
-      extern castfn __leak2 (x: GLtexture): void
+      extern castfn __leak2 (x: GLtexture1): void
     in
       __leak1 (program); __leak2 (tex2d)
     end
@@ -138,9 +148,9 @@ in
 end
 
 extern
-fun init (filename: string): void = "init"
+fun init (filename: !strptr1): void = "init"
 implement init (filename) = let
-  var tex: GLtexture // uninitialized
+  var tex: GLtexture0 // uninitialized
 in
   glGenTexture tex;
   texture_from_file (tex, filename);
@@ -272,11 +282,11 @@ end // end of [draw]
 (* ****** ****** *)
 
 extern
-fun reshape {w,h:pos} (width: int w, height: int h): void = "reshape"
+fun reshape {w,h:pos}
+  (width: int w, height: int h): void = "reshape"
 implement reshape (w, h) =
   glViewport (
-    GLint_of_int1 0, GLint_of_int1 0
-  , GLsizei_of_int1 w, GLsizei_of_int1 h
+    GLint_of_int1 0, GLint_of_int1 0, GLsizei_of_int1 w, GLsizei_of_int1 h
   )
 
 (* ****** ****** *)
@@ -488,7 +498,7 @@ ats_void_type mainats (
    EGLint egl_major, egl_minor;
    int i;
    const char *s;
-   const char *imagename = "datasets/inv_weapon2.tga";
+   const char *imagename = "data/inv_weapon2.tga";
 
    for (i = 1; i < argc; i++) {
      if (strcmp(((char **)argv)[i], "-display") == 0) {
@@ -575,4 +585,6 @@ ats_void_type mainats (
 
    return;
 }
-%}
+%} // end of [%{$]
+
+(* end of [GLES2-test02.dats] *)

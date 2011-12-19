@@ -1,13 +1,18 @@
 (* ****** ****** *)
-
+//
 // Author of the file: Artyom Shalkhakov
 // Starting time: May 13, 2011
-
+//
+(* ****** ****** *)
+//
+// License: GNU LESSER GENERAL PUBLIC LICENSE version 2.1
+//
 (* ****** ****** *)
 
 %{#
-#include "GLES2/CATS/gl2.cats"
-%}
+#include "prelude/CATS/integer_ptr.cats"
+#include "contrib/GLES2/CATS/gl2.cats"
+%} // end of [%{#]
 
 (* ****** ****** *)
 
@@ -35,11 +40,11 @@ abst@ype
 GLboolean = $extype"ats_GLboolean_type"
 
 fun eq_GLboolean_GLboolean (x: GLboolean, y: GLboolean):<> bool
-  = "atsctrb_eq_GLboolean_GLboolean" // function!
+  = "atsctrb_eq_GLboolean_GLboolean" // AS: function!
 overload = with eq_GLboolean_GLboolean
 
 fun neq_GLboolean_GLboolean (x: GLboolean, y: GLboolean):<> bool
-  = "atsctrb_neq_GLboolean_GLboolean" // function!
+  = "atsctrb_neq_GLboolean_GLboolean" // AS: function!
 overload <> with neq_GLboolean_GLboolean
 
 (* ****** ****** *)
@@ -88,7 +93,7 @@ typedef GLsizei = [i:int] GLsizei (i)
 (* ****** ****** *)
 
 abst@ype
-GLfloat = $extype"ats_GLfloat_type" // single precision
+GLfloat = $extype"ats_GLfloat_type" // AS: single precision
 castfn GLfloat_of_float (x: float):<> GLfloat
 castfn float_of_GLfloat (x: GLfloat):<> float
 overload float_of with float_of_GLfloat
@@ -100,7 +105,7 @@ castfn GLclampf_of_float (x: float):<> GLclampf
 (* ****** ****** *)
 
 abst@ype
-GLfixed = $extype"ats_GLfixed_type" // 32-bit integer
+GLfixed = $extype"ats_GLfixed_type" // AS: 32-bit integer
 castfn GLfixed_of_uint32 (x: uint32):<> GLfixed
 castfn uint32_of_GLfixed (x: GLfixed):<> uint32
 
@@ -117,6 +122,9 @@ typedef GLsizeiptr = [i:int] GLsizeiptr (i)
 
 (* ****** ****** *)
 
+fun GLboolean_of_bool (x: bool):<> GLboolean = "atsctrb_GLboolean_of_bool"
+fun bool_of_GLboolean (x: GLboolean):<> bool = "atsctrb_bool_of_GLboolean"
+
 fun GLbyte_of_int (x: int):<> GLbyte = "atsctrb_GLbyte_of_int"
 fun GLubyte_of_int (x: int):<> GLubyte = "atsctrb_GLubyte_of_int"
 fun GLubyte_of_uint (x: uint):<> GLubyte = "atsctrb_GLubyte_of_uint"
@@ -125,8 +133,11 @@ fun GLshort_of_int (x: int):<> GLshort = "atsctrb_GLshort_of_int"
 fun GLushort_of_int (x: int):<> GLushort = "atsctrb_GLushort_of_int"
 fun GLushort_of_uint (x: uint):<> GLushort = "atsctrb_GLushort_of_uint"
 
-fun GLsizei_of_size1 {i:int} (x: size_t i): GLsizei i = "atsctrb_GLsizei_of_size"
-fun GLsizei_of_int1 {i:int} (x: int i): GLsizei i = "atsctrb_GLsizei_of_int"
+fun GLsizei_of_size1 {i:int} (x: size_t i):<> GLsizei i = "atsctrb_GLsizei_of_size"
+fun GLsizei_of_int1 {i:int} (x: int i):<> GLsizei i = "atsctrb_GLsizei_of_int"
+
+fun GLsizeiptr_of_uintptr1 {i:int} (x: uintptr i):<> GLsizeiptr i = "atsctrb_GLsizeiptr_of_uintptr"
+fun GLsizeiptr_of_int1 {i:nat} (x: int i):<> GLsizeiptr i = "atsctrb_GLsizeiptr_of_int"
 
 fun GLfloat_of_int (x: int):<> GLfloat = "atsctrb_GLfloat_of_int"
 fun GLfloat_of_double (x: double):<> GLfloat = "atsctrb_GLfloat_of_double"
@@ -134,6 +145,10 @@ fun GLfloat_of_double (x: double):<> GLfloat = "atsctrb_GLfloat_of_double"
 fun GLfixed_of_int (x: int):<> GLfixed = "atsctrb_GLfixed_of_int"
 
 (* ****** ****** *)
+
+symintr GLboolean
+overload GLboolean with GLboolean_of_bool
+overload bool_of with bool_of_GLboolean
 
 symintr GLbyte GLubyte
 overload GLbyte with GLbyte_of_int
@@ -146,11 +161,11 @@ overload GLushort with GLushort_of_int
 overload GLushort with GLushort_of_uint
 
 symintr GLint GLuint
-overload GLint with GLint_of_int // castfn
-overload GLint with GLint_of_int1 // castfn
-overload GLint with GLint_of_GLenum // castfn
-overload GLuint with GLuint_of_uint // castfn
-overload GLuint with GLuint_of_uint1 // castfn
+overload GLint with GLint_of_int // AS: castfn
+overload GLint with GLint_of_int1 // AS: castfn
+overload GLint with GLint_of_GLenum // AS: castfn
+overload GLuint with GLuint_of_uint // AS: castfn
+overload GLuint with GLuint_of_uint1 // AS: castfn
 
 symintr GLsizei
 overload GLsizei with GLsizei_of_size1
@@ -171,8 +186,8 @@ overload lor with lor_GLbitfield_GLbitfield
 
 (* ****** ****** *)
 
-abst@ype GLarray2 (a:t@ype, w:int, n:int) // for two-dimensional arrays
-abst@ype GLarray3 (a:t@ype, w:int, h:int, n:int) // for three-dimensional arrays
+abst@ype GLarray2 (a:t@ype, w:int, n:int) // AS: for two-dimensional arrays
+abst@ype GLarray3 (a:t@ype, w:int, h:int, n:int) // AS: for three-dimensional arrays
 
 (* ****** ****** *)
 
@@ -603,7 +618,9 @@ absviewt@ype GLrenderbuffer (int) = GLuint
 viewtypedef GLrenderbuffer = [n:int] GLrenderbuffer (n)
 
 absviewt@ype GLtexture (int) = GLuint
-viewtypedef GLtexture = [n:int] GLtexture (n)
+viewtypedef GLtexture_zero = GLtexture 0
+viewtypedef GLtexture0 = [n:nat] GLtexture (n)
+viewtypedef GLtexture1 = [n:pos] GLtexture (n)
 
 absviewt@ype GLprogram (i:int) = GLuint
 viewtypedef GLprogram = [i:int] GLprogram (i)
@@ -612,7 +629,22 @@ absviewt@ype GLshader (i:int) = GLuint
 viewtypedef GLshader = [i:int] GLshader (i)
 
 (* ****** ****** *)
-(* GL core functions (listed in mostly alphabetical order) *)
+
+fun GLtexture_zero () :<> GLtexture_zero = "mac#atsctrb_GLtexture_zero"
+
+fun GLtexture_is_zero {n:nat} (x: !GLtexture n)
+  :<> bool (n == 0) = "mac#atsctrb_GLtexture_is_zero"
+
+fun GLtexture_isnot_zero {n:nat} (x: !GLtexture n)
+  :<> bool (n > 0) = "mac#atsctrb_GLtexture_isnot_zero"
+
+castfn GLtexture_free_zero (x: GLtexture_zero) :<> void
+
+(* ****** ****** *)
+
+(*
+** GL core functions (listed in mostly alphabetical order)
+*)
 
 fun glActiveTexture (texture: GLenum): void = "mac#atsctrb_glActiveTexture"
 
@@ -650,7 +682,7 @@ fun glBindRenderbuffer {i:int} (
 // end of [glBindRenderbuffer]
 
 fun glBindTexture (
-  target: GLenum, texture: !GLtexture
+  target: GLenum, texture: !GLtexture1
 ) : void
   = "mac#atsctrb_glBindTexture"
 // end of [glBindTexture]
@@ -790,13 +822,13 @@ fun glDeleteRenderbuffers {n:pos} (
 
 fun glDeleteShader (shader: GLshader): void = "mac#atsctrb_glDeleteShader"
 
-fun glDeleteTexture (texture: GLtexture): void
+fun glDeleteTexture (texture: GLtexture1): void
   = "atsctrb_glDeleteTexture" // this is a function!
 // end of [glDeleteTexture]
 
 fun glDeleteTextures {n:pos} (
   n: GLsizei n
-, textures: &(@[GLtexture][n]) >> @[GLtexture?][n]
+, textures: &(@[GLtexture1][n]) >> @[GLtexture0?][n]
 ) : void
   = "mac#atsctrb_glDeleteTextures"
 
@@ -846,7 +878,7 @@ fun glFramebufferTexture2D (
   target: GLenum
 , attachment: GLenum
 , textarget: GLenum
-, texture: !GLtexture
+, texture: !GLtexture1
 , level: GLint
 ) : void
   = "mac#atsctrb_glFramebufferTexture2D"
@@ -884,11 +916,11 @@ fun glGenRenderbuffers : glGen_type (GLrenderbuffer)
   = "mac#atsctrb_glGenRenderbuffers"
 // end of [glGenRenderbuffers]
 
-fun glGenTexture (texture: &GLtexture? >> GLtexture): void
+fun glGenTexture (texture: &GLtexture0? >> GLtexture1): void
   = "atsctrb_glGenTexture"
 // end of [glGenTexture]
 
-fun glGenTextures : glGen_type (GLtexture)
+fun glGenTextures : glGen_type (GLtexture1)
   = "mac#atsctrb_glGenTextures"
 // end of [glGenTextures]
 
@@ -1088,7 +1120,7 @@ fun glIsFramebuffer (framebuffer: !GLframebuffer): GLboolean = "mac#atsctrb_glIs
 fun glIsProgram (program: !GLprogram): GLboolean = "mac#atsctrb_glIsProgram"
 fun glIsRenderbuffer (renderbuffer: !GLrenderbuffer): GLboolean = "mac#atsctrb_glIsRenderbuffer"
 fun glIsShader (shader: !GLshader): GLboolean = "mac#atsctrb_glIsShader"
-fun glIsTexture (texture: !GLtexture): GLboolean = "mac#atsctrb_glIsTexture"
+fun glIsTexture (texture: !GLtexture0): GLboolean = "mac#atsctrb_glIsTexture"
 
 (* ****** ****** *)
 
@@ -1272,11 +1304,11 @@ fun glUniformMatrix2fv (
   = "mac#atsctrb_glUniformMatrix2fv"
 // end of [glUniformMatrix2fv]
 
-fun glUniformMatrix3fv (
+fun glUniformMatrix3fv {n:pos} (
   location: GLint
-, count: GLsizei
+, count: GLsizei n
 , transpose: GLboolean
-, value: ptr
+, value: &(@[@[GLfloat][9]][n])
 ) : void
   = "mac#atsctrb_glUniformMatrix3fv"
 // end of [glUniformMatrix3fv]
@@ -1290,11 +1322,13 @@ fun glUniformMatrix4fv {n:pos} (
   = "mac#atsctrb_glUniformMatrix4fv"
 // end of [glUniformMatrix4fv]
 
-fun glUseProgram {i:int} (program: !GLprogram i): void = "mac#atsctrb_glUseProgram"
+fun glUseProgram {i:int}
+  (program: !GLprogram i): void = "mac#atsctrb_glUseProgram"
 
 (* ****** ****** *)
 
-fun glValidateProgram {i:int} (program: !GLprogram i): void = "mac#atsctrb_glValidateProgram"
+fun glValidateProgram {i:int}
+  (program: !GLprogram i): void = "mac#atsctrb_glValidateProgram"
 
 typedef glVertexAttrib_type (n:int) =
   (GLint(*indx*), &(@[GLfloat][n](*values*))) -<fun1> void
@@ -1305,12 +1339,20 @@ fun glVertexAttrib2fv : glVertexAttrib_type (2) = "mac#atsctrb_glVertexAttrib2fv
 fun glVertexAttrib3fv : glVertexAttrib_type (3) = "mac#atsctrb_glVertexAttrib3fv"
 fun glVertexAttrib4fv : glVertexAttrib_type (4) = "mac#atsctrb_glVertexAttrib4fv"
 
-fun glVertexAttrib1f (indx: GLuint, x: GLfloat): void = "mac#atsctrb_glVertexAttrib1f"
-fun glVertexAttrib2f (indx: GLuint, x: GLfloat, y: GLfloat): void = "mac#atsctrb_glVertexAttrib2f"
-fun glVertexAttrib3f (indx: GLuint, x: GLfloat, y: GLfloat, z: GLfloat): void = "mac#atsctrb_glVertexAttrib3f"
-fun glVertexAttrib4f (indx: GLuint, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat): void = "mac#atsctrb_glVertexAttrib4f"
+fun glVertexAttrib1f
+  (indx: GLuint, x: GLfloat): void = "mac#atsctrb_glVertexAttrib1f"
+fun glVertexAttrib2f
+  (indx: GLuint, x: GLfloat, y: GLfloat): void = "mac#atsctrb_glVertexAttrib2f"
+fun glVertexAttrib3f
+  (indx: GLuint, x: GLfloat, y: GLfloat, z: GLfloat): void = "mac#atsctrb_glVertexAttrib3f"
+fun glVertexAttrib4f
+  (indx: GLuint, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat): void = "mac#atsctrb_glVertexAttrib4f"
 
-fun glVertexAttribPointer {a:t@ype} {n:pos | n <= 4} {m:nat} {l:addr} (
+fun glVertexAttribPointer
+  {a:t@ype}
+  {n:pos | n <= 4}
+  {m:nat}
+  {l:addr} (
   pf: !matrix_v (a, m, n, l)
 | indx: GLuint
 , size: GLint n
@@ -1335,7 +1377,7 @@ fun glVertexAttribPointer_unsafe (
 
 fun glViewport (
   x: GLint, y: GLint, width: GLsizei, height: GLsizei
-): void
+) : void
   = "mac#atsctrb_glViewport"
 
 (* ****** ****** *)

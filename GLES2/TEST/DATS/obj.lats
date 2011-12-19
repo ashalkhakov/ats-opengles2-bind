@@ -1,14 +1,17 @@
 (*
 ** Wavefront OBJ file loader.
 ** Written by Artyom Shalkhakov in June, 2011.
+** Modified in November, 2011.
 *)
 
 %{
 (* ****** ****** *)
+//
 // preamble
-
+//
 staload _ = "prelude/DATS/array.dats"
 staload _ = "prelude/DATS/list_vt.dats"
+staload _ = "prelude/DATS/pointer.dats"
 
 staload "libats/SATS/rarray.sats"
 staload _ = "libats/DATS/rarray.dats"
@@ -16,10 +19,19 @@ staload _ = "libats/DATS/rarray.dats"
 staload "libats/lex/lexing.sats"
 
 staload "libc/SATS/stdio.sats"
+staload "libc/SATS/stdlib.sats"
+staload "libc/SATS/stdarg.sats"
+staload "libc/SATS/printf.sats"
 
-staload "GLES2/TEST/SATS/obj.sats"
+staload "libc/SATS/unistd.sats" // for [getcwd0]
 
 (* ****** ****** *)
+
+staload "obj.sats"
+// staload "obj_mtl_lats.dats"
+
+(* ****** ****** *)
+// Wavefront Object file
 
 dataviewtype token =
   | TOKint of int
@@ -27,10 +39,16 @@ dataviewtype token =
   | TOKnl // newline
   | TOKsl // slash
   | TOKv | TOKvn | TOKvt | TOKf
+  // actually a path name
+  | TOKid of strptr1
+  | TOKg
+  | TOKusemtl
+  | TOKmtllib
+  // distinguished
   | TOKeof
 // end of [token]
 
-fun free_token .< >. (tok: token):<> void = case+ tok of
+fn free_token (tok: token):<> void = case+ tok of
   | ~TOKint _ => ()
   | ~TOKfl _ => ()
   | ~TOKnl () => ()
@@ -39,6 +57,10 @@ fun free_token .< >. (tok: token):<> void = case+ tok of
   | ~TOKvn () => ()
   | ~TOKvt () => ()
   | ~TOKf () => ()
+  | ~TOKid s => strptr_free s
+  | ~TOKg () => ()
+  | ~TOKusemtl () => ()
+  | ~TOKmtllib () => ()
   | ~TOKeof () => ()
 // end of [free_token]
 
@@ -46,25 +68,37 @@ extern fun fprint_token {m:file_mode}
   (pf_mod: file_mode_lte (m, w) | fil: &FILE m, tok: !token): void
 
 implement fprint_token
-  (pf_mod | fil, tok) = case+ tok of
+  (pf | fl, tok) = case+ tok of
   | TOKint i =>
-      (fprint_int (pf_mod | fil, i); fold@ tok)
+      (fprint_int (pf | fl, i); fold@ tok)
   | TOKfl f =>
-      (fprint_float (pf_mod | fil, f); fold@ tok)
+      (fprint_float (pf | fl, f); fold@ tok)
   | TOKnl () =>
-      (fprint_string (pf_mod | fil, "NL"); fold@ tok)
+      (fprint_string (pf | fl, "NL"); fold@ tok)
   | TOKsl () =>
-      (fprint_string (pf_mod | fil, "SL"); fold@ tok)
+      (fprint_string (pf | fl, "SL"); fold@ tok)
   | TOKv () =>
-      (fprint_string (pf_mod | fil, "TOKv"); fold@ tok)
+      (fprint_string (pf | fl, "TOKv"); fold@ tok)
   | TOKvn () =>
-      (fprint_string (pf_mod | fil, "TOKvn"); fold@ tok)
+      (fprint_string (pf | fl, "TOKvn"); fold@ tok)
   | TOKvt () =>
-      (fprint_string (pf_mod | fil, "TOKvt"); fold@ tok)
+      (fprint_string (pf | fl, "TOKvt"); fold@ tok)
   | TOKf () =>
-      (fprint_string (pf_mod | fil, "TOKf"); fold@ tok)
+      (fprint_string (pf | fl, "TOKf"); fold@ tok)
+  | TOKid (!s) => begin
+      fprint_string (pf | fl, "TOKid (\"");
+      fprint_strptr (pf | fl, !s);
+      fprint_string (pf | fl, "\"");
+      fold@ tok
+    end // end of [begin]
+  | TOKg () =>
+      (fprint_string (pf | fl, "TOKg"); fold@ tok)
+  | TOKusemtl () =>
+      (fprint_string (pf | fl, "TOKusemtl"); fold@ tok)
+  | TOKmtllib () =>
+      (fprint_string (pf | fl, "TOKmtllib"); fold@ tok)
   | TOKeof () =>
-      (fprint_string (pf_mod | fil, "TOKeof"); fold@ tok)
+      (fprint_string (pf | fl, "TOKeof"); fold@ tok)
 // end of [fprint_token]
 
 extern fun print_token (tok: !token): void
@@ -86,11 +120,77 @@ in
 end // end of [prerr_token]
 
 (* ****** ****** *)
+// Material Library file
+
+dataviewtype mtltok =
+  | MTLint of int
+  | MTLfl of float
+  | MTLnl // newline
+  | MTLnewmtl // followed by an identifier or a path
+  | MTLKd
+  | MTLmap_Kd // followed by a path
+  | MTLkw of strptr1 // a "don't care" keyword
+  | MTLpt of strptr1 // path
+  // distinguished
+  | MTLeof
+// end of [mtltok]
+
+fn free_mtltok (tok: mtltok):<> void = case+ tok of
+  | ~MTLint _ => ()
+  | ~MTLfl _ => ()
+  | ~MTLnl () => ()
+  | ~MTLnewmtl () => ()
+  | ~MTLKd () => ()
+  | ~MTLmap_Kd () => ()
+  | ~MTLkw x => strptr_free x
+  | ~MTLpt x => strptr_free x
+  | ~MTLeof () => ()
+// end of [free_mtltok]
+
+extern fun fprint_mtltok {m:file_mode}
+  (pf_mod: file_mode_lte (m, w) | fil: &FILE m, tok: !mtltok): void
+
+implement fprint_mtltok (pf | fl, tok) = case+ tok of
+  | MTLint i => (fprint_int (pf | fl, i); fold@ tok)
+  | MTLfl f => (fprint_float (pf | fl, f); fold@ tok)
+  | MTLnl () => (fprint_string (pf | fl, "NL"); fold@ tok)
+  | MTLnewmtl () => (fprint_string (pf | fl, "newmtl"); fold@ tok)
+  | MTLKd () => (fprint_string (pf | fl, "Kd"); fold@ tok)
+  | MTLmap_Kd () => (fprint_string (pf | fl, "map_Kd"); fold@ tok)
+  | MTLkw (!x) => begin
+      fprint_string (pf | fl, "KW(\"");
+      fprint_strptr (pf | fl, !x);
+      fprint_string (pf | fl, "\"");
+      fold@ tok
+    end // end of [begin]
+  | MTLpt (!x) => begin
+      fprint_string (pf | fl, "PT(\"");
+      fprint_strptr (pf | fl, !x);
+      fprint_string (pf | fl, "\"");
+      fold@ tok
+    end // end of [begin]
+  | MTLeof () => (fprint_string (pf | fl, "EOF"); fold@ tok)
+// end of [fprint_mtltok]
+
+extern fun print_mtltok (tok: !mtltok): void
+implement print_mtltok (tok) = let
+  val (pf_stdout | stdout) = stdout_get ()
+in
+  fprint_mtltok (file_mode_lte_w_w | !stdout, tok);
+  stdout_view_set (pf_stdout | (*none*))
+end // end of [print_mtltok]
+
+extern fun prerr_mtltok (tok: !mtltok): void
+implement prerr_mtltok (tok) = let
+  val (pf_stderr | stderr) = stderr_get ()
+in
+  fprint_mtltok (file_mode_lte_w_w | !stderr, tok);
+  stderr_view_set (pf_stderr | (*none*))
+end // end of [prerr_mtltok]
+
+(* ****** ****** *)
 
 %{^
-
-extern long int
-strtol (const char *nptr, char **endptr, int base) ;
 
 ats_int_type __strtoi
   (ats_ptr_type str, ats_int_type base) {
@@ -104,33 +204,58 @@ ats_float_type __strtod
 
 %}
 
-fun lexeme_int (): int = let
-  val str = lexeme_string () in __strtoi (str, 10)
-end where {
-  extern fun __strtoi (str: string, base: int): int = "__strtoi"
-}
+fun lexeme_int (lb: &lexbuf_t): int = let
+  val str = lexeme_strptr_lexbuf (lb)
+  val res = __strtoi (str, 10) where {
+    extern fun __strtoi (str: !strptr1, base: int): int = "__strtoi"
+  } // end of [where]
+in
+  strptr_free str; res
+end // end of [lexeme_int]
 
-fun lexeme_float (): float = let
-  val str = lexeme_string () in __strtod (str)
-end where {
-  extern fun __strtod (str: string): float = "__strtod"
-}
+fun lexeme_float (lb: &lexbuf_t): float = let
+  val str = lexeme_strptr_lexbuf (lb)
+  val res = __strtod (str) where {
+    extern fun __strtod (str: !strptr1): float = "__strtod"
+  } // end of [where]
+in
+  strptr_free str; res
+end // end of [lexeme_float]
 
 (* ****** ****** *)
 
-extern fun TOKEN (): token
-fn TOKEN_lexing_error {a:viewt@ype} (): a = lexing_error ()
+extern fun TOKEN (lb: &lexbuf_t): token
+extern fun FACE (lb: &lexbuf_t): token
+extern fun PATH (lb: &lexbuf_t): token
 
-fn process_illegal_token {a:viewt@ype} (): a = begin
+fn process_illegal_token {a:viewt@ype} (lb: &lexbuf_t): a = begin
   prerr_string ": LEXING ERROR";
   prerr_string ": illegal character [";
-  prerr_char (lexeme_get 0);
+  prerr_char (lexeme_get_lexbuf (lb, 0));
   prerr_string "] at position [";
-  lexing_curpos_prerr ();
+  lexbuf_curpos_prerr (lb);
   prerr_string "].";
   prerr_newline ();
   $raise LexingErrorException
 end // end of [process_illegal_token]
+
+fn TOKEN_lexing_error {a:viewt@ype} (lb: &lexbuf_t): a =
+  process_illegal_token {a} (lb)
+// end of [TOKEN_lexing_error]
+
+fn FACE_lexing_error {a:viewt@ype} (lb: &lexbuf_t): a =
+  process_illegal_token {a} (lb)
+// end of [FACE_lexing_error]
+
+fn PATH_lexing_error {a:viewt@ype} (lb: &lexbuf_t): a =
+  process_illegal_token {a} (lb)
+// end of [PATH_lexing_error]
+
+extern fun MTLTOK (lb: &lexbuf_t): mtltok
+
+fn MTLTOK_lexing_error {a:viewt@ype} (lb: &lexbuf_t): a =
+  process_illegal_token {a} (lb)
+// end of [MTLTOK_lexing_error]
 
 (* ****** ****** *)
 
@@ -149,89 +274,395 @@ ufloat0 = $digit+ $exp
 ufloat1 = $digit+ '.' $digit* ($exp)?
 
 ufloat = $ufloat0 | $ufloat1
-// ufloat = $ufloat0 | $ufloat2
 literal_float = ['-']? $ufloat
 
-ident = ['a'-'z' 'A'-'Z']['a'-'z' 'A'-'Z' '0'-'9' '.']*
+ident = ['a'-'z' 'A'-'Z']['_' 'a'-'z' 'A'-'Z' '0'-'9' '-']*
+
+// NOTE: overlaps with identifiers and numbers
+path = ['_' 'a'-'z' 'A'-'Z' '0'-'9' '-' '.' '/']+
 
 com = ['#'] [^ '\n']* ['\n']
 
 %%
 
+// lexical analysis of OBJ files
+
+// generic tokenizing
 TOKEN () =
-  | $blank { TOKEN () }
-  | $com { TOKEN () }
+  | $blank { TOKEN (mylexbuf) }
+  | $com { TOKEN (mylexbuf) }
   | "\n" { TOKnl () }
   | "/" { TOKsl () }
   | "v" { TOKv () }
   | "vt" { TOKvt () }
   | "vn" { TOKvn () }
-  | "m" { TOKEN () }
-  | "mtllib" { TOKEN () }
-  | "o" { TOKEN () }
-  | "u" { TOKEN () }
-  | "g" { TOKEN () }
+  | "m" { TOKEN (mylexbuf) }
+  | "mtllib" { TOKmtllib () }
+  | "usemtl" { TOKusemtl () }
   | "f" { TOKf () }
-  | $ident { TOKEN () }
-  | $literal_int { TOKint (lexeme_int ()) }
-  | $literal_float { TOKfl (lexeme_float ()) }
-  | [^] { process_illegal_token () }
+  // yes, a hack!
+  // | ['s'] [^ '\n']* ['\n'] { TOKEN (lb) }
+  // | ['o'] [^ '\n']* ['\n'] { TOKEN (lb) }
+  | "g" { TOKg () }
+  | $literal_int { TOKint (lexeme_int (mylexbuf)) }
+  | $literal_float { TOKfl (lexeme_float (mylexbuf)) }
+  | $ident { TOKid (lexeme_strptr_lexbuf (mylexbuf)) }
+  | [^] { process_illegal_token (mylexbuf) }
   | $EOF { TOKeof () }
 
+// tokenizing in a face definition
+FACE () =
+  | $blank { FACE (mylexbuf) }
+  | "/" { TOKsl () }
+  | $literal_int { TOKint (lexeme_int (mylexbuf)) }
+  | '\n' { TOKnl () }
+  | [^] { process_illegal_token (mylexbuf) }
+
+// tokenizing a path
+// TODO: proper parsing of pathnames?
+PATH () =
+  // skip preceding whitespace
+  | $blank { PATH (mylexbuf) }
+  | $path { TOKid (lexeme_strptr_lexbuf (mylexbuf)) }
+  | '\n' { TOKnl () }
+  | [^] { process_illegal_token (mylexbuf) }
+
+// lexical analysis of MTL files
+MTLTOK () =
+  | $blank { MTLTOK (mylexbuf) }
+  | $com { MTLTOK (mylexbuf) }
+  | "\n" { MTLnl () }
+  | "newmtl" { MTLnewmtl () }
+  | "Kd" { MTLKd () }
+  | "map_Kd" { MTLmap_Kd () }
+  | $literal_int { MTLint (lexeme_int (mylexbuf)) }
+  | $literal_float { MTLfl (lexeme_float (mylexbuf)) }
+  | $ident { MTLkw (lexeme_strptr_lexbuf (mylexbuf)) }
+  | $path { MTLpt (lexeme_strptr_lexbuf (mylexbuf)) }
+  | [^] { process_illegal_token (mylexbuf) }
+  | $EOF { MTLeof () }
 
 %%
-
-%{^
-#include "libc/CATS/stdio.cats"
-%} // end of [%{^]
 
 // postamble in the obj.lats
 exception ParseError
 
 (* ****** ****** *)
 
-fun parse_error {a:viewt@ype} (s: string): a = begin
+fun parse_error {a:viewt@ype} (lb: &lexbuf_t, s: string): a = begin
   prerr s; prerr ": [";
-  lexing_curpos_prerr ();
+  lexbuf_curpos_prerr (lb);
   prerr "]\n";
   $raise ParseError
 end // end of [parse_error]
 
-fun skip_newline (tok: &token): void = case+ tok of
-  | ~TOKnl () => tok := TOKEN ()
-  | tok_v => (tok := tok_v; parse_error "expected newline")
+fun parse_error_token {a:viewt@ype} (lb: &lexbuf_t, tok: &token, s: string): a = begin
+  prerr "Parse error at [";
+  lexbuf_curpos_prerr (lb);
+  prerrf ("]: expected %s, but found [", @(s));
+  prerr_token tok;
+  prerr ("]\n");
+  $raise ParseError
+end // end of [parse_error_token]
+
+fun parse_prerrf {a:viewt@ype} {ts:types} (
+  lb: &lexbuf_t, fmt: printf_c ts, arg: ts
+): a = let
+  // [va_start (arg, fmt)] is emitted by atsopt
+  val () = prerr "["
+  val () = lexbuf_curpos_prerr (lb)
+  val () = prerr "]:";
+  val (pf_stderr | stderr) = stderr_get ()
+  val ntot = vfprintf (file_mode_lte_w_w | !stderr, fmt, arg)
+in
+  va_end (arg);
+  stderr_view_set (pf_stderr | (*none*));
+  $raise ParseError
+end // end of [parse_prerrf]
+
+(* ****** ****** *)
+// MTL file parsing
+
+
+local
+
+fun parse_error_mtltok {a:viewt@ype} (lb: &lexbuf_t, tok: &mtltok, s: string): a = begin
+  prerr "Parse error at [";
+  lexbuf_curpos_prerr (lb);
+  prerrf ("]: expected %s, but found [", @(s));
+  prerr_mtltok tok;
+  prerr ("]\n");
+  $raise ParseError
+end // end of [parse_error_mtltok]
+
+fun skip_newline (lb: &lexbuf_t, tok: &mtltok): void = case+ tok of
+  | ~MTLnl () => tok := MTLTOK (lb)
+  | tok_v => (tok := tok_v; parse_error_mtltok (lb, tok, "newline"))
 // end of [skip_newline]
 
-fun parse_float (tok: &token): float = case+ tok of
-  | ~TOKfl f => (tok := TOKEN (); f)
-  | ~TOKint i => (tok := TOKEN (); float_of i)
-  | tok_v => (tok := tok_v; parse_error "expected float")
+fun parse_float (lb: &lexbuf_t, tok: &mtltok): float = case+ tok of
+  | ~MTLfl f => (tok := MTLTOK (lb); f)
+  | ~MTLint i => (tok := MTLTOK (lb); float_of i)
+  | tok_v => (tok := tok_v; parse_error_mtltok (lb, tok, "float"))
 // end of [parse_float]
 
-fun parse_size (tok: &token): size_t = case+ tok of
-  | ~TOKint s => (tok := TOKEN (); size_of_int s)
-  | tok_v => (tok := tok_v; parse_error "expected unsigned int")
-// end of [parse_size]
-
-fun parse_float2 (tok: &token): float2_t = let
-  val a = parse_float tok
-  val b = parse_float tok
-in
-  @(a, b)
-end // end of [parse_float2]
-
-fun parse_float3 (tok: &token): float3_t = let
-  val a = parse_float tok
-  val b = parse_float tok
-  val c = parse_float tok
+fun parse_float3 (lb: &lexbuf_t, tok: &mtltok): float3_t = let
+  val a = parse_float (lb, tok)
+  val b = parse_float (lb, tok)
+  val c = parse_float (lb, tok)
 in
   @(a, b, c)
 end // end of [parse_float3]
 
-fun parse_size3 (tok: &token): size3_t = let
-  val a = parse_size tok
-  val b = parse_size tok
-  val c = parse_size tok
+fun parse_pathname (lb: &lexbuf_t, tok: &mtltok): strptr1 = case+ tok of
+  | ~MTLpt s => (tok := MTLTOK (lb); s)
+  | tok_v => (tok := tok_v; parse_error_mtltok (lb, tok, "pathname"))
+// end of [parse_pathname]
+
+fun parse_keyword (lb: &lexbuf_t, tok: &mtltok): strptr1 = case+ tok of
+  | ~MTLkw s => (tok := MTLTOK (lb); s)
+  | tok_v => (tok := tok_v; parse_error_mtltok (lb, tok, "identifier"))
+// end of [parse_ident]
+
+viewtypedef mtl0 = @{
+  id= ptr?
+, kd= float3_t?
+, map_kd= ptr?
+} // end of [mtl0]
+
+// in MTL files, path names are usually relative to the OBJ file;
+// we want absolute paths
+fun obj_resolve_path (base: !strptr1, suf: strptr1): strptr1 = let
+  extern
+  fun strptr1_append (x: !strptr1, y: !strptr1):<> [i:nat] strbufptr_gc (i)
+    = "atspre_string_append"
+  val res = strptr1_append (base, suf)
+  val () = strptr_free suf
+in
+  strptr_of_strbuf res
+end // end of [obj_resolve_path]
+
+// [mtl_def] := newmtl pathname newline [mtlparms]
+// [mtlparms] := <empty> | [mtlline] newline [mtlparms]
+fun parse_mtl_defs {n1:nat} (
+  objbas: !strptr1
+, lb: &lexbuf_t, tok: &mtltok
+, n1: size_t n1
+, mtllib: &list_vt (mtl, n1) >> list_vt (mtl, n2)
+) : #[n2:nat | n1 <= n2] size_t n2 = let
+  // [mtlline] := Kd flt flt flt newline | map_Kd pathname newline | [mtlparm] newline
+  // returns [false] if the input is not a line of material definition
+  fun parse_mtl_line {l1:addr} (
+    objbas: !strptr1
+  , lb: &lexbuf_t, tok: &mtltok, kd: &float3_t, map_kd: &strptr l1 >> strptr l2
+  ): #[l2:addr] bool = case+ tok of
+    | ~MTLKd () => begin
+        tok := MTLTOK (lb);
+        // we allow as many redefinitions as they want
+        kd := parse_float3 (lb, tok);
+        skip_newline (lb, tok);
+        true
+      end // end of [begin]
+    | ~MTLmap_Kd () => begin
+        tok := MTLTOK (lb);
+        if strptr_isnot_null (map_kd) then begin
+          parse_error (lb, "[parse_mtl_line]: [map_Kd] is specified more than once");
+          exit (1)
+        end else begin
+          strptr_free map_kd;
+          map_kd := obj_resolve_path (objbas, parse_pathname (lb, tok));
+          skip_newline (lb, tok);
+          true
+        end // end of [if]
+      end // end of [begin]
+    | ~MTLkw x => let
+        // [arg] := pathname | keyword | integer | float
+        fun skip_mtl_arg (lb: &lexbuf_t, tok: &mtltok): bool = case+ tok of
+          | ~MTLint _ => (tok := MTLTOK (lb); true)
+          | ~MTLfl _ => (tok := MTLTOK (lb); true)
+          | ~MTLkw x => (strptr_free x; tok := MTLTOK (lb); true)
+          | ~MTLpt x => (strptr_free x; tok := MTLTOK (lb); true)
+          | tok_v => (tok := tok_v; false)
+        // end of [skip_mtl_arg]
+
+        fun skip_mtl_args (lb: &lexbuf_t, tok: &mtltok): void =
+          case+ tok of
+          | ~MTLnl () => tok := MTLTOK (lb)
+          | tok_v => begin
+              tok := tok_v;
+              if skip_mtl_arg (lb, tok) then skip_mtl_args (lb, tok)
+            end // end of [begin]
+        // end of [skip_mtl_args]
+      in
+        strptr_free x;
+        tok := MTLTOK (lb);
+        skip_mtl_args (lb, tok);
+        true
+      end // end of [begin]
+    | tok_v => (tok := tok_v; false)
+  // end of [parse_mtl_line]
+in
+  case+ tok of
+  | ~MTLnewmtl () => let
+      fun loop (objbas: !strptr1, lb: &lexbuf_t, tok: &mtltok, mtl: &mtl): void =
+        if parse_mtl_line (objbas, lb, tok, mtl.kd, mtl.map_kd) then loop (objbas, lb, tok, mtl)
+      // end of [loop]
+      val () = tok := MTLTOK (lb)
+      val id = (begin
+        case+ :(tok: mtltok) => tok of
+        | ~MTLpt s => (tok := MTLTOK (lb); s)
+        | ~MTLkw s => (tok := MTLTOK (lb); s)
+        | tok_v => (tok := tok_v; parse_error_mtltok (lb, tok, "material name"))
+      end): strptr1 // end of [id]
+      var mtl = @{id= id, kd= @(0.8f, 0.8f, 0.8f), map_kd= strptr_null ()}
+    in
+      skip_newline (lb, tok);
+      loop (objbas, lb, tok, mtl);
+      mtllib := list_vt_cons (mtl, mtllib);
+      parse_mtl_defs (objbas, lb, tok, succ n1, mtllib)
+    end // end of [begin]
+  | ~MTLnl () => begin // skip newlines
+      tok := MTLTOK (lb);
+      parse_mtl_defs (objbas, lb, tok, n1, mtllib);
+    end // end of [begin]
+  | tok_v => (tok := tok_v; n1)
+end // end of [parse_mtl_defs]
+
+in // of [local]
+
+// may throw an exception
+fn mtllib_lookup {n:nat} (
+  mtl: !list_vt (mtl, n), id: !strptr1
+) : sizeLt n = let
+  extern fun eq_strptr_strptr (s1: !strptr1, s2: !strptr1):<> bool = "atspre_eq_string_string"
+  fun loop {i,j:nat | i <= n; j == n-i} .<i>. (
+    xs: !list_vt (mtl, i), id: !strptr1, j: size_t j
+  ): sizeLt n = case+ xs of
+  | list_vt_nil () => begin
+      prerr "[mtllib_lookup]: material name [";
+      prerr id;
+      prerr "] is not in the library\n";
+      fold@ xs;
+      exit (1)
+    end // end of [begin]
+  | list_vt_cons (!m, !p_xs) => let
+      val res = if eq_strptr_strptr (!m.id, id) then j else loop (!p_xs, id, j+1)
+    in
+      fold@ xs; res
+    end // end of [let]
+  // end of [loop]
+in
+  loop (mtl, id, 0)
+end // end of [mtllib_lookup]
+
+fn parse_mtllib {n1:nat} (
+  objbas: !strptr1
+, filnam: strptr1
+, n: size_t n1
+, mtl: &list_vt (mtl, n1) >> list_vt (mtl, n2)
+) : #[n2:nat | n1 <= n2] size_t n2 = let
+  // TODO: use [strptr] in stdio API?
+  extern
+  fun fopen_err {m:fm}
+    (path: !strptr1, m: file_mode m)
+    :<> [l:addr] (FILEopt_v (m, l) | ptr l) = "mac#atslib_fopen_err"
+  // end of [fopen_err]
+  val filnam = obj_resolve_path (objbas, filnam)
+  val (pfopt | p_ifp) = fopen_err (filnam, file_mode_r)
+in
+  if p_ifp > null then let
+    prval Some_v (pf) = pfopt
+    val (pf_infil | p_infil) = infile_make_file (pf, file_mode_lte_r_r | p_ifp)
+    val (pf_lexbuf | lexbuf) = lexbuf_make_infile (pf_infil | p_infil)
+    var tok = MTLTOK (!lexbuf)
+    val () = prerr "parsing MTL file... "
+    val () = prerr filnam
+    val () = prerr_newline ()
+    val res = parse_mtl_defs (objbas, !lexbuf, tok, n, mtl)
+  in
+    case+ tok of
+    | ~MTLeof () => (prerr "...done parsing"; prerr_newline ())
+    | tok_v => begin
+        free_mtltok tok_v;
+        prerr "[parse_mtllib]: couldn't parse [";
+        prerr filnam;
+        prerr "]\n";
+        exit (1)
+      end; // end of [begin]
+    lexbuf_free (pf_lexbuf | lexbuf);
+    strptr_free (filnam);
+    res
+  end else let
+    prval None_v () = pfopt in
+    prerr "[parse_mtllib]: couldn't open [";
+    prerr filnam;
+    prerr "], continuing the import\n";
+    strptr_free (filnam);
+    n
+  end; // end of [if]
+end // end of [parse_mtllib]
+
+end // end of [local]
+
+(* ****** ****** *)
+// OBJ file parsing
+
+fun skip_newline (lb: &lexbuf_t, tok: &token): void = case+ tok of
+  | ~TOKnl () => tok := TOKEN (lb)
+  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "newline"))
+// end of [skip_newline]
+
+fun parse_ident (lb: &lexbuf_t, tok: &token): strptr1 = case+ tok of
+  | ~TOKid s => (tok := TOKEN (lb); s)
+  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "identifier"))
+// end of [parse_ident]
+
+fun parse_pathname (lb: &lexbuf_t, tok: &token): strptr1 = case+ tok of
+  | ~TOKid s => (tok := PATH (lb); s)
+  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "path name"))
+// end of [parse_pathname]
+
+fun parse_float (lb: &lexbuf_t, tok: &token): float = case+ tok of
+  | ~TOKfl f => (tok := TOKEN (lb); f)
+  | ~TOKint i => (tok := TOKEN (lb); float_of i)
+  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "float"))
+// end of [parse_float]
+
+fun parse_size (lb: &lexbuf_t, tok: &token): size_t = case+ tok of
+  | ~TOKint s => (tok := TOKEN (lb); size_of_int s)
+  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "unsigned int"))
+// end of [parse_size]
+
+fun parse_uv (lb: &lexbuf_t, tok: &token): float2_t = let
+  var res: float2_t // uninitialized
+  val () = res.0 := parse_float (lb, tok)
+  // the second argument is optional
+  val () = begin
+    case+ :(res: float2_t) => tok of
+    | ~TOKfl f => (tok := TOKEN (lb); res.1 := f)
+    | ~TOKint i => (tok := TOKEN (lb); res.1 := float_of i)
+    | tok_v => (tok := tok_v; res.1 := 0.0f)
+  end // end of [begin]
+in
+  // the third argument is ignored
+  case+ tok of
+  | ~TOKfl _ => (tok := TOKEN (lb); res)
+  | ~TOKint _ => (tok := TOKEN (lb); res)
+  | tok_v => (tok := tok_v; res)
+end // end of [parse_uv]
+
+fun parse_float3 (lb: &lexbuf_t, tok: &token): float3_t = let
+  val a = parse_float (lb, tok)
+  val b = parse_float (lb, tok)
+  val c = parse_float (lb, tok)
+in
+  @(a, b, c)
+end // end of [parse_float3]
+
+fun parse_size3 (lb: &lexbuf_t, tok: &token): size3_t = let
+  val a = parse_size (lb, tok)
+  val b = parse_size (lb, tok)
+  val c = parse_size (lb, tok)
 in
   @(a, b, c)
 end // end of [parse_size3]
@@ -239,9 +670,13 @@ end // end of [parse_size3]
 (* ****** ****** *)
 
 viewtypedef listsz_vt (a:viewt@ype, n:int) = @(size_t n, list_vt (a, n))
+viewtypedef Listsz_vt (a:viewt@ype) = [n:nat] listsz_vt (a, n)
 
 #define cons list_vt_cons
 #define nil list_vt_nil
+
+fn{a:viewt@ype} listsz_is_nil {n:nat} (l: !listsz_vt (a, n)):<> bool (n == 0) = l.0 = 0
+fn{a:viewt@ype} listsz_is_cons {n:nat} (l: !listsz_vt (a, n)):<> bool (n > 0) = l.0 > 0
 
 fun{a:viewt@ype} listsz_cons {n:nat} .< >. (
   l: &listsz_vt (a, n) >> listsz_vt (a, n+1), x: a
@@ -250,85 +685,93 @@ fun{a:viewt@ype} listsz_cons {n:nat} .< >. (
   l.1 := cons (x, l.1)
 end // end of [listsz_cons]
 
-viewtypedef meshconstr (nv:int, nn:int, ntc:int, nf:int) = @{
-  verts= listsz_vt (float3_t, nv)
-, norms= listsz_vt (float3_t, nn)
-, texcoords= listsz_vt (float2_t, ntc)
+viewtypedef surfconstr (nm:int, nv:int, nn:int, ntc:int, nf:int) = @{
+  usemtl= sizeLt nm
 , faces= listsz_vt (triangle, nf)
 }
-viewtypedef meshconstr = [nv,nn,ntc,nf:nat] meshconstr (nv, nn, ntc, nf)
+viewtypedef surfconstr (nm:int, nv:int, nn:int, ntc:int) = [nf:nat] surfconstr (nm, nv, nn, ntc, nf)
+
+viewtypedef meshconstr (nm:int, nv:int, nn:int, ntc:int, ns:int) = @{
+  base= strptr1
+, mtllib= listsz_vt (mtl, nm)
+, verts= listsz_vt (float3_t, nv)
+, norms= listsz_vt (float3_t, nn)
+, texcoords= listsz_vt (float2_t, ntc)
+  // currently parsed surface
+  // - at each [usemtl]:
+  //   - surf_cur is not empty -> push into [surfs], make it empty again
+  // - surf_cur is not empty and no [usemtl] has been issued at all,
+  //   push it to the list when finalizing mesh
+, surf_cur= surfconstr (nm, nv, nn, ntc)
+  // surfaces already parsed
+, surfs= listsz_vt (surfconstr (nm, nv, nn, ntc), ns)
+} // end of [meshconstr]
+
+viewtypedef meshconstr = [nm,nv,nn,ntc,ns:nat] meshconstr (nm, nv, nn, ntc, ns)
 
 (* ****** ****** *)
-
-typedef parsemesh_type = (
-  &token, &meshconstr >> meshconstr (nv', nn', ntc', nf')
-) -<fun1> #[nv',nn',ntc',nf':nat] void // end of [parsemesh_type]
 
 (*
 [faceidx] := sz | sz/sz | sz//sz | sz/sz/sz
 *)
 
-fun parse_faceidx (tok: &token, f: &faceidx): void = case+ tok of
+fun parse_faceidx (lb: &lexbuf_t, tok: &token, f: &faceidx): void = let
+  fun szread1 (lb: &lexbuf_t, x: int): [i:nat] size_t i = let
+    val sz = int1_of_int x
+  in
+    if sz > 0 then size1_of_int1 (sz - 1)
+    else parse_prerrf (lb, "[parse_faceidx]: index %d is not 1-based", @(sz))
+  end // end of [szread1]
+in
+  case+ tok of
   | ~TOKint sz0 => let // v
-      val [sz0:int] sz0 = int1_of_int sz0
-      val () = assert_errmsg (sz0 > 0, "[parse_faceidx]: not 1-based!")
-      val sz0 = size_of_int (sz0 - 1)
-      val () = tok := TOKEN ()
+      val sz0 = szread1 (lb, sz0)
     in
+      tok := FACE (lb);
       case+ tok of
-      | ~TOKsl () => let // v/
-          val () = tok := TOKEN ()
-        in
+      | ~TOKsl () => begin // v/
+          tok := FACE (lb);
           case+ tok of
           | ~TOKint sz1 => let // v/x, where x is either normal index, or texcoord index
-              val [sz1:int] sz1 = int1_of_int sz1
-              val () = assert_errmsg (sz1 > 0, "[parse_faceidx]: not 1-based!")
-              val sz1 = size_of_int (sz1 - 1)
-              val () = tok := TOKEN ()
+              val sz1 = szread1 (lb, sz1)
             in
+              tok := FACE (lb);
               case+ tok of
-              | ~TOKsl () => let // v/t/
-                  val () = tok := TOKEN ()
-                in
+              | ~TOKsl () => begin // v/t/
+                  tok := FACE (lb);
                   case+ tok of
                   // v//n
                   | ~TOKint sz2 => let
-                      val [sz2:int] sz2 = int1_of_int sz2
-                      val () = assert_errmsg (sz2 > 0, "[parse_faceidx]: not 1-based!")
-                      val sz2 = size_of_int (sz2 - 1)
-                    in
-                      tok := TOKEN ();
+                      val sz2 = szread1 (lb, sz2) in
+                      tok := TOKEN (lb);
                       f.vidx := sz0;
                       f.tidx := sz1;
                       f.nidx := sz2
                     end // end of [begin]
                   // v/t/_
-                  | tok_v => (tok := tok_v; parse_error "expected normal index")
+                  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "normal index"))
                 end // end of [let]
               | tok_v => // v/t
                   (tok := tok_v; f.vidx := sz0; f.tidx := sz1)
             end // end of [let]
           | ~TOKsl () => let // v//
-              val () = tok := TOKEN ()
+              val () = tok := FACE (lb)
             in
               case+ tok of
               | ~TOKint sz1 => let // v//n
-                  val [sz1:int] sz1 = int1_of_int sz1
-                  val () = assert_errmsg (sz1 > 0, "[parse_faceidx]: not 1-based!")
-                  val sz1 = size_of_int (sz1 - 1)
-                  val () = tok := TOKEN ()
-                in
+                  val sz1 = szread1 (lb, sz1) in
+                  tok := FACE (lb);
                   f.vidx := sz0; f.nidx := sz1
                 end // end of [let]
               | tok_v => // v//x
-                  (tok := tok_v; parse_error "expected unsigned int")
+                  (tok := tok_v; parse_error_token (lb, tok, "unsigned int"))
             end // end of [let]
-          | tok_v => (tok := tok_v; parse_error "expected forward slash")
+          | tok_v => (tok := tok_v; parse_error_token (lb, tok, "forward slash"))
         end // end of [let]
       | tok_v => (tok := tok_v; f.vidx := sz0)
     end // end of [let]
-  | tok_v => (tok := tok_v; parse_error "expected unsigned int")
-// end of [parse_faceidx]
+  | tok_v => (tok := tok_v; parse_error_token (lb, tok, "unsigned int"))
+end // end of [parse_faceidx]
 
 (*
 [tri] := [faceidx] [faceidx] [faceidx]
@@ -341,26 +784,27 @@ viewtypedef face = [n:nat | n >= 3] list_vt (faceidx, n)
 
 // this function preserves ordering of elements in a list
 fun parse_face (
-  tok: &token
+  lb: &lexbuf_t, tok: &token
 ) : face = let
   fun loop (
-      tok: &token
+      lb: &lexbuf_t
+    , tok: &token
     , res: &List_vt faceidx? >> list_vt (faceidx, m)
     ) : #[m:nat] size_t m = case+ tok of
     | TOKnl () => (fold@ tok; res := nil (); size1_of_int1 0)
     | tok_v => let
-        var fidx = @{vidx= size_of_int 0, nidx= size_of_int 0, tidx= size_of_int 0}
+        var fidx = @{vidx= size1_of_int1 0, nidx= size1_of_int1 0, tidx= size1_of_int1 0}
         val () = tok := tok_v
-        val () = parse_faceidx (tok, fidx)
+        val () = parse_faceidx (lb, tok, fidx)
         val () = res := list_vt_cons {faceidx} {0} (fidx, ?)
         val+ cons (_, !p) = res
-        val sz = loop (tok, !p)
+        val sz = loop (lb, tok, !p)
       in
         fold@ res; sz + 1
       end // end of [let]
   // end of [loop]
   var res: List_vt faceidx
-  val sz = loop (tok, res)
+  val sz = loop (lb, tok, res)
   val () = assert_errmsg (sz >= 3, "[parse_face]: less than three vertices in a face")
 in
   res
@@ -391,97 +835,301 @@ end // end of [triangle_of_face]
 [phrase] :=
   | v flt flt flt
   | vn flt flt flt
-  | vt flt flt
+  | vt flt flt?
   | [f]
+  | [usemtl]
 *)
 
-extern fun parse_mesh: parsemesh_type
-implement parse_mesh (tok, msh) = let
-in
+fun parse_mesh {nm,nv,nn,ntc,ns:nat} (
+  lb: &lexbuf_t, tok: &token
+, msh: &meshconstr (nm, nv, nn, ntc, ns) >> meshconstr (nm1, nv1, nn1, ntc1, ns1)
+): #[nm1,nv1,nn1,ntc1,ns1:nat | nm1 >= nm; nv1 >= nv; nn1 >= nn; ntc1 >= ntc; ns1 >= ns] void =
   case+ tok of
+  | ~TOKmtllib () => let
+      val () = tok := PATH (lb)
+      val pth = parse_pathname (lb, tok)
+      val n1 = parse_mtllib (msh.base, pth, msh.mtllib.0, msh.mtllib.1)
+    in
+      msh.mtllib.0 := n1;
+      skip_newline (lb, tok);
+      parse_mesh (lb, tok, msh)
+    end // end of [let]
   | ~TOKv () => begin
-      tok := TOKEN ();
-      listsz_cons (msh.verts, parse_float3 (tok));
-      skip_newline (tok);
-      parse_mesh (tok, msh)
+      tok := TOKEN (lb);
+      listsz_cons (msh.verts, parse_float3 (lb, tok));
+      skip_newline (lb, tok);
+      parse_mesh (lb, tok, msh)
     end // end of [begin]
   | ~TOKvn () => begin
-      tok := TOKEN ();
-      listsz_cons (msh.norms, parse_float3 (tok));
-      skip_newline (tok);
-      parse_mesh (tok, msh)
+      tok := TOKEN (lb);
+      listsz_cons (msh.norms, parse_float3 (lb, tok));
+      skip_newline (lb, tok);
+      parse_mesh (lb, tok, msh)
     end // end of [begin]
   | ~TOKvt () => begin
-      tok := TOKEN ();
-      listsz_cons (msh.texcoords, parse_float2 (tok));
-      skip_newline (tok);
-      parse_mesh (tok, msh)
+      tok := TOKEN (lb);
+      listsz_cons (msh.texcoords, parse_uv (lb, tok));
+      skip_newline (lb, tok);
+      parse_mesh (lb, tok, msh)
     end // end of [begin]
   | ~TOKf () => begin
-      tok := TOKEN ();
-      triangle_of_face (parse_face (tok), msh.faces);
-      skip_newline (tok);
-      parse_mesh (tok, msh)
+      tok := FACE (lb);
+      triangle_of_face (parse_face (lb, tok), msh.surf_cur.faces);
+      parse_mesh (lb, tok, msh)
     end // end of [begin]
   | TOKnl () => begin // skip newlines
-      tok := TOKEN ();
-      parse_mesh (tok, msh)
+      tok := TOKEN (lb);
+      parse_mesh (lb, tok, msh)
     end // end of [begin]
+  | ~TOKg () => let
+      val () = tok := TOKEN (lb)
+      val id = parse_ident (lb, tok)
+    in
+      skip_newline (lb, tok);
+      prerr ("[parse_mesh]: skipping group named [");
+      prerr id;
+      prerr ("]\n");
+      strptr_free id;
+      parse_mesh (lb, tok, msh)
+    end // end of [let]
+  | ~TOKusemtl () => let
+      val () = tok := PATH (lb)
+      val id = parse_pathname (lb, tok)
+      val () = skip_newline (lb, tok)
+      val res = mtllib_lookup (msh.mtllib.1, id)
+    in
+      // new [usemtl] directive implies the start of a new surface
+      if listsz_is_cons (msh.surf_cur.faces) then begin
+        listsz_cons (msh.surfs, msh.surf_cur);
+        msh.surf_cur.faces := @(size1_of_int1 0, list_vt_nil ());
+      end;
+      msh.surf_cur.usemtl := res;
+      strptr_free id;
+      parse_mesh (lb, tok, msh)
+    end // end of [let]
   | tok_v => tok := tok_v
-end // end of [parse_mesh]
+// end of [parse_mesh]
 
 (* ****** ****** *)
 
-// initialize from list, but in reverse order (starting from the last
-// element of array, ending at the first)
-fun{a:viewt@ype} array_ptr_initialize_lst_vt_rev {n:nat} .< >. (
-  base: &(@[a?][n]) >> @[a][n], sz: size_t n, xs0: list_vt (a, n)
-) :<> void = let
+// NOTE: reverses the order of elements
+fun{a,b:viewt@ype} array_init_from_list_funenv {v:view} {vt:viewtype} {n:nat} {f:eff} .< >. (
+  pfv: !v
+| base: &(@[b?][n]) >> @[b][n]
+, xs0: list_vt (a, n)
+, asz: size_t n
+, f: (!v | &a >> a?, &b? >> b, !vt) -<f> void
+, env: !vt
+) :<f> void = let
   fun loop {n:nat} {l:addr} .<n>. (
-      pf: rarray_v (a?, n, l) | p: ptr l, xs: list_vt (a, n)
-    ) :<> (
-      rarray_v (a, n, l) | void
+      pf_v: !v, pf_arr: rarray_v (b?, n, l)
+    | p: ptr l, xs: list_vt (a, n)
+    , f: (!v | &a >> a?, &b? >> b, !vt) -<f> void
+    , env: !vt
+    ) :<f> (
+      rarray_v (b, n, l) | void
     ) = case+ xs of
-    | ~list_vt_cons (x, xs) => let
-        prval (pf1, pf2) = rarray_v_uncons {a?} (pf)
-        val p1 = p - sizeof<a>
-        val () = !p1 := x
-        val (pf1 | ans) = loop (pf1 | p1, xs)
+    | list_vt_cons (!x, !p_xs1) => let
+        prval (pf1, pf2) = rarray_v_uncons {b?} (pf_arr)
+        val p1 = p - sizeof<b>
+        val () = f (pf_v | !x, !p1, env)
+        val xs1 = !p_xs1
+        val () = free@ {a} {0} (xs)
+        val (pf1 | ans) = loop (pf_v, pf1 | p1, xs1, f, env)
       in
-        (rarray_v_cons {a} (pf1, pf2) | ans)
+        (rarray_v_cons {b} (pf1, pf2) | ans)
       end // end of [let]
     | ~list_vt_nil () => let
-        prval () = rarray_v_unnil {a?} (pf) in (rarray_v_nil {a} () | ())
+        prval () = rarray_v_unnil {b?} (pf_arr) in (rarray_v_nil {b} () | ())
       end // end of [let]
   // end of [loop]
-  val (pf_mul, pf_rarr | p) = array2rarray_ptr (view@ (base) | &base, sz)
-  val (pf_rarr | ()) = loop (pf_rarr | p, xs0)
-  prval () = view@ (base) := array_v_of_rarray_v {a} (pf_mul, pf_rarr)
+  val (pf_mul, pf_rarr | p) = array2rarray_ptr (view@ (base) | &base, asz)
+  val (pf_rarr | ()) = loop (pfv, pf_rarr | p, xs0, f, env)
+in
+  view@ (base) := array_v_of_rarray_v {b} (pf_mul, pf_rarr)
+end // end of [array_init_from_list_funenv]
+
+fun{a,b:viewt@ype} array_init_from_list_vclo {v:view} {vt:viewtype} {n:nat} {f:eff} .< >. (
+  pfv: !v
+| base: &(@[b?][n]) >> @[b][n]
+, xs0: list_vt (a, n)
+, asz: size_t n
+, f: &(!v | &a >> a?, &b? >> b) -<clo,f> void
+) :<f> void = let
+  stavar l_f: addr
+  typedef clo_t = (!v | &a >> a?, &b? >> b) -<clo,f> void
+  val p_f: ptr l_f = &f
+  viewdef V = (v, clo_t @ l_f)
+  fn app (pf: !V | x: &a >> a?, y: &b? >> b, p_f: !ptr l_f):<f> void = let
+    prval (pf1, pf2) = pf in !p_f (pf1 | x, y); pf := (pf1, pf2)
+  end // end of [app]
+  prval pf = (pfv, view@ f)
+  val () = array_init_from_list_funenv<a,b> {V} {ptr l_f} (pf | base, xs0, asz, app, p_f)
+  prval (pf1, pf2) = pf
+  prval () = (pfv := pf1; view@ f := pf2)
 in
   // nothing
-end // end of [array_ptr_initialize_lst_vt_rev]
+end // end of [array_init_from_list_vclo]
 
-fun mesh_finalize {nv,nn,ntc,nf:nat} (
-    msh_in: meshconstr (nv, nn, ntc, nf)
-  , msh_out: &mesh0? >> mesh (nv, nn, ntc, nf)
+fun mesh_finalize {nm,nv,nn,ntc,ns:nat} (
+    msh_in: meshconstr (nm, nv, nn, ntc, ns)
+  , msh_out: &mesh0? >> mesh
   ) : void = let
-  fn{a:t@ype} conv {n:nat} .< >. (
+  // simple copying
+  // NOTE: reverses the order of elements (first list elements
+  // become last)
+  fn{a:viewt@ype} conv {n:nat} .< >. (
       src: listsz_vt (a, n)
     , dst: &arrsz0_vt a? >> arrsz_vt (a, n)
     ) :<> void = let
     val [l:addr] (pf_gc, pf_arr | p) = array_ptr_alloc<a> src.0
-    val () = array_ptr_initialize_lst_vt_rev<a> (!p, src.0, src.1)
+
+    prval pfv = unit_v ()
+    val () = array_init_from_list_funenv<a,a> {unit_v} {ptr null} (
+      pfv | !p, src.1, src.0
+    , lam (v | x, y, env) =<> ptr_move_vt<a> (view@ x, view@ y | &x, &y)
+    , null
+    ) // end of [val]
+    prval unit_v () = pfv
+
     prval () = dst.0 := pf_arr
     prval () = dst.1 := pf_gc
     val () = dst.2 := src.0
     val () = dst.3 := p
   in
+    // nothing
   end // end of [conv]
+
+  // do the bounds checking
+  fn conv_faces {nv,nn,ntc,nf:nat} .< >. (
+      src: listsz_vt (triangle, nf)
+    , nv: size_t nv, nn: size_t nn, ntc: size_t ntc
+    ) : [l:addr] (
+      free_gc_v (triangle (nv, nn, ntc)?, nf, l)
+    , array_v (triangle (nv, nn, ntc), nf, l)
+    | ptr l
+    ) = let
+    typedef faceidx0 = @{vidx= size_t?, nidx= size_t?, tidx= size_t?}
+    typedef T0 = (faceidx0, faceidx0, faceidx0)
+    typedef T1 = triangle
+    typedef T2 = triangle (nv, nn, ntc)
+
+    val [l:addr] (pf_gc, pf_arr | p) = array_ptr_alloc<T2> src.0
+    #define i2s int1_of_size1
+
+    var !p_clo with pf_clo = @lam (
+      pf_v: !unit_v
+    | src: &T1 >> T0, dst: &T0 >> T2): void =<clo1> let
+      fun coerce (a: faceidx, nv: size_t nv, nn: size_t nn, ntc: size_t ntc): faceidx (nv, nn, ntc) =
+        // well, the repeated checks of [nv,nn,ntc] should be hoisted out of the loop, but...
+        if a.vidx < nv then begin
+          if nn <= 0 || a.nidx < nn then begin
+            if ntc <= 0 || a.tidx < ntc then begin
+              @{vidx= a.vidx, nidx= a.nidx, tidx= a.tidx}
+            end else begin
+              prerrf ("[mesh_finalize]: texcoord index %d is out of bounds [0,%d)\n", @(i2s a.tidx, i2s ntc));
+              exit_errmsg (1, "failure: index out of bounds\n")
+            end
+          end else begin
+            prerrf ("[mesh_finalize]: normal index %d is out of bounds [0,%d)\n", @(i2s a.nidx, i2s nn));
+            exit_errmsg (1, "failure: index out of bounds\n")
+          end
+        end else begin
+          prerrf ("[mesh_finalize]: vertex index %d is out of bounds [0,%d)\n", @(i2s a.vidx, i2s nv));
+          exit_errmsg (1, "failure: index out of bounds\n")
+        end
+      // end of [coerce]
+    in
+      dst.0 := coerce (src.0, nv, nn, ntc);
+      dst.1 := coerce (src.1, nv, nn, ntc);
+      dst.2 := coerce (src.2, nv, nn, ntc)
+    end // end of [var]
+    prval pfv = unit_v ()
+    val () = array_init_from_list_vclo<T1,T2> {unit_v} (pfv | !p, src.1, src.0, !p_clo)
+    prval unit_v () = pfv
+  in
+    (pf_gc, pf_arr | p)
+  end // end of [conv_faces]
+
+  viewtypedef surf = @{
+    mtl= size_t
+  , faces= arrsz0_vt triangle
+  } // end of [surf0]
+
+  fun conv_surfs (
+      cur: surfconstr (nm, nv, nn, ntc)
+    , src: listsz_vt (surfconstr (nm, nv, nn, ntc), ns)
+    , dst: &arrsz0_vt surf0? >> arrsz_vt (surf (nm, nv, nn, ntc), ns')
+    , nm: size_t nm, nv: size_t nv
+    , nn: size_t nn, ntc: size_t ntc
+    ) : #[ns':nat] void = let
+    viewtypedef T1 = surfconstr (nm, nv, nn, ntc)
+    viewtypedef T2 = surf (nm, nv, nn, ntc)
+    var src = src //
+    fun attach_surf (x: T1, src: &listsz_vt (T1, ns) >> listsz_vt (T1, ns')): #[ns':nat] void = let
+      fun free_surf (x: T1): void = list_vt_free<triangle> (x.faces.1)    
+    in
+      if listsz_is_cons (x.faces) then listsz_cons (src, x)
+      else free_surf x
+    end // end of [attach_surf]
+    val () = attach_surf (cur, src)
+    val [l:addr] (pf_gc, pf_arr | p) = array_ptr_alloc<surf> src.0
+    fun loop {l:addr} {n:nat} (
+      pf_arr: !array_v (surf?, n, l) >> array_v (T2, n, l)
+    | p: ptr l
+    , xs0: list_vt (T1, n), asz: size_t n
+    ):<cloptr1> void = if asz > 0 then let
+        val ~cons (x, xs0) = xs0
+        prval (pf_at, pf1_arr) = array_v_uncons {surf?} (pf_arr)
+        val () = p->mtl := x.usemtl
+        val (pf_gc, pf2_arr | pp) = conv_faces (x.faces, nv, nn, ntc)
+        val () = p->faces := (pf2_arr, pf_gc | x.faces.0, pp)
+        val () = loop (pf1_arr | p+sizeof<T2>, xs0, pred asz)
+        prval () = pf_arr := array_v_cons {T2} (pf_at, pf1_arr)
+      in
+        // nothing
+      end else let
+        val ~nil () = xs0
+        prval () = array_v_unnil {surf?} (pf_arr)
+        prval () = pf_arr := array_v_nil {T2} ()
+      in
+        // nothing
+      end // end of [if]
+    // end of [loop]
+  in
+    loop (pf_arr | p, src.1, src.0);
+    dst.0 := pf_arr;
+    dst.1 := pf_gc;
+    dst.2 := src.0;
+    dst.3 := p
+  end // end of [conv_surfs]
 in
-  conv (msh_in.verts, msh_out.verts);
-  conv (msh_in.norms, msh_out.norms);
-  conv (msh_in.texcoords, msh_out.texcoords);
-  conv (msh_in.faces, msh_out.faces)
+  strptr_free (msh_in.base);
+  conv<float3_t> (msh_in.verts, msh_out.verts);
+  conv<float3_t> (msh_in.norms, msh_out.norms);
+  conv<float2_t> (msh_in.texcoords, msh_out.texcoords);
+  () where {
+    val [l:addr] (pf_gc, pf_arr | p) = array_ptr_alloc<mtl> (msh_in.mtllib.0)
+    val () = array_ptr_initialize_lst_vt<mtl> (!p, msh_in.mtllib.1)
+    prval () = msh_out.mtllib.0 := pf_arr
+    prval () = msh_out.mtllib.1 := pf_gc
+    val () = msh_out.mtllib.2 := msh_in.mtllib.0
+    val () = msh_out.mtllib.3 := p
+  }; // end of [where]
+  // in future, may want to check bounds so that
+  // we can use glDrawRangeElements
+  // (the gist is that each index of a triangle in a surface S
+  // is between [lo, hi]; this makes it possible to assert
+  // that the surface S uses only a subset of the vertex buffer)
+  conv_surfs (
+    msh_in.surf_cur
+  , msh_in.surfs
+  , msh_out.surfs
+  , msh_out.mtllib.2
+  , msh_out.verts.2
+  , msh_out.norms.2
+  , msh_out.texcoords.2
+  )
 end
 
 (* ****** ****** *)
@@ -490,46 +1138,85 @@ dynload "libats/lex/lexing.dats"
 
 (* ****** ****** *)
 
+%{
+
+ats_ptr_type ext_strptr_of_string (ats_ptr_type x) {
+  int n = strlen((char*)x) ;
+  char *des = (char*)ATS_MALLOC(n+1) ;
+  des[n] = '\000' ;
+  memcpy(des, x, n) ;  
+  return (ats_ptr_type)des ;  
+} // end of [ext_strptr_of_string]
+
+%}
+
+extern
+fun strptr_of_string {n:pos} (x: string n):<> strptr1
+  = "ext_strptr_of_string"
+
 implement mesh_from_file (filename, msh_out) = let
+  // NOTE: we assume that all filenames are relative
+  // to the current working directory!
+
+  // the intention here is to get the "base" directory
+  // for a given OBJ file (all textures and materials
+  // in the file are assumed to be relative to the base
+  // directory)
+  fun path_base (x: string): strptr1 = let
+    val [n:int] x = string1_of_string x
+    // FIXME: not portable to Windows
+    val ofs = string_index_of_char_from_right (x, '/')
+  in
+    if ofs < 0 then getcwd0 () // OBJ file is in the current workdir
+    else strptr_of_strbuf (string_make_substring (x, 0, size1_of_ssize1 ofs+1))
+  end // end of [path_base]
+
   fun{a:viewt@ype} listsz_init (): listsz_vt (a, 0) =
     @(size1_of_int1 0, list_vt_nil ())
   // end of [listsz_init]
+  // gives a material to use by default (fairly arbitrary)
+  fn mtl_white ():<> mtl = @{
+    id= strptr_of_string "white"
+  , kd= @(0.8f, 0.8f, 0.8f)
+  , map_kd= strptr_null ()
+  } // end of [mtl_white]
   val (pfopt | p_ifp) = fopen_err (filename, file_mode_r)
 in
   if p_ifp > null then let
     prval Some_v (pf) = pfopt
     val (pf_infil | p_infil) = infile_make_file (pf, file_mode_lte_r_r | p_ifp)
     val (pf_lexbuf | lexbuf) = lexbuf_make_infile (pf_infil | p_infil)
-    val () = lexing_lexbuf_set (pf_lexbuf | lexbuf)
-    var tok: token = TOKEN ()
+    var tok = TOKEN (!lexbuf)
     var msh = @{
-        verts= @(size1_of_int1 0, list_vt_nil ())
-      , norms= @(size1_of_int1 0, list_vt_nil ())
-      , texcoords= @(size1_of_int1 0, list_vt_nil ())
-      , faces= @(size1_of_int1 0, list_vt_nil ())
-      } // end of [msh]
-    val () = parse_mesh (tok, msh)
-    // end of [val]
-    val () = (case+ tok of
-      | ~TOKeof () => ()
-      | tok_v => begin
-          print_token tok_v;
-          free_token tok_v;
-          prerrf ("[mesh_from_file]: couldn't parse [%s]\n", @(filename));
-          exit {void} (1)
-        end // end of [begin]
-    ) : void
-    val () = mesh_finalize (msh, msh_out)
-    val () = lexing_lexbuf_free ()
+      base= path_base filename
+    , mtllib= @(i2s 1, list_vt_sing (mtl_white ()))
+    , verts= emp
+    , norms= emp
+    , texcoords= emp
+    , surf_cur= @{usemtl= i2s 0, faces= emp}
+    , surfs= emp
+    } where {
+      #define i2s size1_of_int1
+      macdef emp = @(i2s 0, nil ())
+    } // end of [where]
   in
-    // nothing
+    parse_mesh (!lexbuf, tok, msh);
+    case+ tok of
+    | ~TOKeof () => ()
+    | tok_v => begin
+        print_token tok_v;
+        free_token tok_v;
+        prerrf ("[mesh_from_file]: couldn't parse [%s]\n", @(filename));
+        exit {void} (1)
+      end; // end of [begin]
+    mesh_finalize (msh, msh_out);
+    lexbuf_free (pf_lexbuf | lexbuf)
   end else let
-    prval None_v () = pfopt
+    prval None_v () = pfopt in
     // for the sake of typechecking
-    prval () = __cast (msh_out) where {
+    __cast (msh_out) where {
       extern castfn __cast (m: &mesh0? >> mesh):<> void
-    } // end of [prval]
-  in
+    }; // end of [where]
     prerrf ("[mesh_from_file]: can't open [%s]\n", @(filename));
     exit {void} (1)
   end // end of [if]
@@ -537,13 +1224,26 @@ end // end of [mesh_from_file]
 
 (* ****** ****** *)
 
-implement mesh_free (m) = let
-  val+ @{verts= v, norms= n, texcoords= t, faces= f} = m
+implement mesh_free (msh) = let
+  stavar nm:int
+  val m = msh.mtllib: arrsz_vt (mtl, nm)
+  stavar nv:int
+  val v = msh.verts: arrsz_vt (float3_t, nv)
+  stavar nn:int
+  val n = msh.norms: arrsz_vt (float3_t, nn)
+  stavar ntc:int
+  val t = msh.texcoords: arrsz_vt (float2_t, ntc)
+  stavar ns:int
+  val s = msh.surfs: arrsz_vt (surf (nm, nv, nn, ntc), ns)
 in
+  array_ptr_free_fun<mtl> (m.1, m.0 | m.3, m.2, lam (x) => (strptr_free (x.id); strptr_free (x.map_kd)));
   array_ptr_free (v.1, v.0 | v.3);
   array_ptr_free (n.1, n.0 | n.3);
   array_ptr_free (t.1, t.0 | t.3);
-  array_ptr_free (f.1, f.0 | f.3)
+  array_ptr_free_fun<surf (nm, nv, nn, ntc)> (
+    s.1, s.0 | s.3, s.2
+  , lam (x) => array_ptr_free (x.faces.1, x.faces.0 | x.faces.3)
+  )
 end // end of [mesh_free]
 
 (* ****** ****** *)

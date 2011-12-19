@@ -11,12 +11,15 @@
 
 staload "libc/SATS/math.sats"
 staload "libc/SATS/stdio.sats"
-
 staload _(*anonymous*) = "prelude/DATS/array.dats"
 
-staload "GLES2/SATS/gl2.sats"
+(* ****** ****** *)
 
-staload "GLES2/TEST/SATS/util.sats"
+staload "contrib/GLES2/SATS/gl2.sats"
+
+(* ****** ****** *)
+
+staload "SATS/util.sats"
 
 (* ****** ****** *)
 
@@ -52,7 +55,8 @@ val (pf_u_matrix | ()) =
 
 extern
 fun keypress (code: natLt 4):<!ref> void = "keypress"
-implement keypress (code) = let
+implement
+keypress (code) = let
   #define F float_of_GLfloat
 in
   case+ code of
@@ -288,6 +292,10 @@ implement init () = begin
   glClearColor ((GLclampf)0.4f, (GLclampf)0.4f, (GLclampf)0.4f, (GLclampf)0.0f);
   create_shaders ()
 end
+
+(* ****** ****** *)
+
+implement main_dummy () = () // [mainats] is implemented externally
 
 (* ****** ****** *)
 
@@ -575,9 +583,9 @@ ats_void_type mainats (
    XCloseDisplay(x_dpy);
 
    return;
-}
-%}
+} // end of [mainats]
+%} // end of [%{$]
 
 (* ****** ****** *)
 
-implement main_dummy () = () // [mainats] is implemented externally
+(* end of [GLES2-test01.dats] *)

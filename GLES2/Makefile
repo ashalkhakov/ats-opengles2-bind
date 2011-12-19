@@ -11,7 +11,6 @@ ATSUSRQ="/usr"
 endif
 
 ATSCC=$(ATSUSRQ)/bin/atscc
-HOME=/home/artyom/proj/ats-ogles2
 
 ######
 
@@ -25,9 +24,7 @@ atsctrb_GLES2.o: gl2_sats.o
 ######
 
 gl2_sats.o: SATS/gl2.sats
-	$(ATSCC) -IATS $(MISCATSHOME) -I $(MISCATSHOME) \
-	  -o $@ -c SATS/gl2.sats
-
+	$(ATSCC) -o $@ -c SATS/gl2.sats
 
 ######
 
