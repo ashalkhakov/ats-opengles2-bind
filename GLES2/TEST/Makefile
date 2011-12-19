@@ -20,7 +20,7 @@ endif
 
 ATSCC=$(ATSUSRQ)/bin/atscc
 ATSLEX=$(ATSUSRQ)/bin/atslex
-ATSMISCCTRB=$(HOME)/proj/ats-ogles2/GLES2/atsctrb_GLES2.o
+ATSMISCCTRB=$(ATSHOME)/contrib/GLES2/atsctrb_GLES2.o
 
 ######
 
