@@ -521,7 +521,7 @@ implement geom_upload {nm,nv,nn,ntc,ns} (invrt, innrm, intc0, insfs, outvbo, out
       fn step (seed: ulint, x: size_t):<> ulint =
         // taken from Boost.Functional.Hash
         (seed lxor (s2ul x))
-        + (ulint_of_int 0x9e3779b9) + (seed << 6) + (seed >> 2)
+        + (ulint_of_uint 0x9e3779b9u) + (seed << 6) + (seed >> 2)
       // end of [step]    
     in
       step (step (step (ulint_of_int 0, x.vidx), x.nidx), x.tidx)
