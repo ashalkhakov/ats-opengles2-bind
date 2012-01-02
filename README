@@ -38,8 +38,12 @@ Here's the list of examples:
 - test02: drawing a textured quad (the texture is loaded from an external TGA file)
 - test03: drawing a static mesh with vertex buffer objects (the mesh is loaded from
   an external Wavefront OBJ file)
+- test04: level set contour texturing [1]
 
 --Artyom Shalkhakov, artyom DOT shalkhakov AT gmail DOT com
+
+[1] "Level set contour textures -- high performance GPU vector graphics",
+    S. Gustavson (stegu AT itn DOT liu DOT se)
 
 #
 # end of [README]
