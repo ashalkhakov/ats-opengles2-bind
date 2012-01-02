@@ -35,8 +35,8 @@ cleanall:: clean
 
 ######
 
-checkall:: test01 test02 test03
-cleanall:: ; $(RMF) test01 test02 test03
+checkall:: test01 test02 test03 test04
+cleanall:: ; $(RMF) test01 test02 test03 test04
 
 ######
 
@@ -85,6 +85,13 @@ test03: GLES2-test03.dats \
 	$(ATSCC) $< -o $@ \
           obj_sats.o obj_lats_dats.o mat4.o util.o \
 	  $(ATSMISCCTRB) -lm -lX11 -lEGL -lGLESv2 -lats_lex
+
+#######
+
+test04: GLES2-test04.dats mat4.o util.o
+	$(ATSCC) $< -o $@ \
+	  mat4.o util.o \
+	  $(ATSMISCCTRB) -lm -lX11 -lEGL -lGLESv2
 
 #######
 

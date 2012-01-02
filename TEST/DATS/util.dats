@@ -95,7 +95,11 @@ implement shader_from_file (x, name) = let
   | buf: &b0ytes (n_buf) >> bytes (n_buf), n: size_t n, f: &FILE m
   ) :<!exn> void = "atslib_fread_byte_exn"
   // end of [fread_b0yte_exn]
-
+  //
+  val () = prerr "[shader_from_file]: trying "
+  val () = prerr name
+  val () = prerr_newline ()
+  //
   val (pfopt | p_ifp) = fopen_err (name, file_mode_r)
 in
   if p_ifp > null then let
@@ -432,34 +436,36 @@ end // end of [image_input]
 
 end // of [local]
 
-implement texture_from_file (tex, filename): void = let
+implement texture_from_file_dim {l} (tex, filename, w, h, filt, wrap) = let
 //
-  val () = prerr "[texture_from_file]: trying "
+  val () = prerr "[texture_from_file_dim]: trying "
   val () = prerr filename
   val () = prerr_newline ()
 //
   val (pf_fl | p_fl) = fopen_exn (__cast filename, file_mode_r) where {
     // NB: [fopen_exn] does not hold onto the passed string
-    extern castfn __cast (x: !strptr1):<> string
+    extern castfn __cast (x: !strptr l):<> string
   } // end of [where]
   var imw: size_t and imh: size_t and psz: size_t and p_im: ptr // uninitialized
   val (pf_mat | free) = image_input (!p_fl, imw, imh, psz, p_im)
   val () = fclose_exn (pf_fl | p_fl)
-  fn is_pow2 (x: size_t):<> bool = (x land (x-1)) = 0 && x > 0
+  fn is_pow2 (x: size_t):<> bool = x > 0 && (x land (x-1)) = 0
 in
-  assert_errmsg (is_pow2 imw, "[texture_from_file]: width is not power of two!");
-  assert_errmsg (is_pow2 imh, "[texture_from_file]: height is not power of two!");
+  assert_errmsg (is_pow2 imw, "[texture_from_file_dim]: width is not power of two!");
+  assert_errmsg (is_pow2 imh, "[texture_from_file_dim]: height is not power of two!");
   glBindTexture (GL_TEXTURE_2D, tex);
   TexImage2D (
-      GL_TEXTURE_2D, (GLint)0, ifmt
+      pf_mat
+    | GL_TEXTURE_2D, (GLint)0, ifmt
     , (GLsizei)imw, (GLsizei)imh
-    , 0, GL_RGBA, GL_UNSIGNED_BYTE, !p_im
+    , 0, GL_RGBA, GL_UNSIGNED_BYTE, p_im
     ) where {
     val ifmt = if psz = 24 then GL_RGB else GL_RGBA
     extern
     fun TexImage2D
-      {a:t@ype} {w,h:int} (
-      target: GLenum
+      {a:t@ype} {w,h:int} {l:addr} (
+      pf_mat: !mtrxt (uint, w, h) @ l
+    | target: GLenum
     , level: GLint
     , internalFormat: GLenum
     , width: GLsizei w
@@ -467,20 +473,21 @@ in
     , border: natLt(2)
     , format: GLenum
     , type: GLenum_type (a)
-    , texels: &mtrxt (uint, w, h)
+    , texels: ptr l
     ) : void
       = "mac#atsctrb_glTexImage2D"
     // end of [TexImage2D]
   }; // end of [where]
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  // NOTE: in some cases, we need CLAMP_TO_EDGE, in others, REPEAT
-  // (REPEAT allows us to "tile" a texture)
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-(*
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-*)
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
+  w := imw; h := imh;
   free (pf_mat | p_im)
+end // end of [texture_from_file_dim]
+
+implement texture_from_file (tex, filename) = let
+  var w: size_t and h: size_t // uninitialized
+in
+  texture_from_file_dim (tex, filename, w, h, GL_LINEAR, GL_REPEAT)
 end // end of [texture_from_file]
