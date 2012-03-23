@@ -11,7 +11,14 @@
 staload "contrib/GLES2/SATS/gl2.sats"
 
 fun shader_from_source {l:agz} (x: !GLshader, src: !strptr l): void
-fun shader_from_file (x: !GLshader, name: string): void
+
+symintr shader_from_file
+
+fun shader_from_file__string (x: !GLshader, name: string): void
+overload shader_from_file with shader_from_file__string
+
+fun shader_from_file__strptr {l:agz} (x: !GLshader, name: !strptr l): void
+overload shader_from_file with shader_from_file__strptr
 
 // loads a texture from a file of specified name (wrt to current workdir);
 // does no mip-mapping

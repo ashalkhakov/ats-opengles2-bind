@@ -76,7 +76,7 @@ end // end of [shader_from_source]
 
 (* ****** ****** *)
 
-implement shader_from_file (x, name) = let
+implement shader_from_file__string (x, name) = let
   fun file_length {m:fm} (pf_mod: file_mode_lte (m, r) | f: &FILE m): lint = let
     val ofs = ftell_exn f
     val () = fseek_exn (f, lint_of_int 0, SEEK_END)
@@ -131,7 +131,16 @@ in
     prerrf ("[shader_from_file]: can't open [%s]\n", @("name"));
     exit {void} (1)
   end // end of [if]
-end // end of [shader_from_file]
+end // end of [shader_from_file__string]
+
+implement shader_from_file__strptr {l} (x, name) = let
+  // shared or not, [shader_from_file__string] will never modify
+  // its input string, and it will also not stash it anywhere
+  extern
+  castfn __cast (x: !strptr l): string
+in
+  shader_from_file__string (x, __cast (name))
+end // end of [shader_from_file__strptr]
 
 (* ****** ****** *)
 // TGA image loading

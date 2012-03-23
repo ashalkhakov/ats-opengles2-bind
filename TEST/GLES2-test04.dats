@@ -136,14 +136,14 @@ implement keypress (code) = let
   ) :<!ref> void = let
     prval vbox pf_at = pf in
     // do not go beyond 180 degrees FOV
-    !p := float_of (max (0.26, double_of (!p) * pow (1.01, double_of d)))
+    !p := float_of (max (0.26, double_of (!p) * pow (1.1, double_of d)))
   end // end of [addz]
 in
   case+ code of
-  | 0 => addf (pf_view_px | &view_px, 1.0f)
-  | 1 => addf (pf_view_px | &view_px, ~1.0f)
-  | 2 => addf (pf_view_py | &view_py, ~1.0f)
-  | 3 => addf (pf_view_py | &view_py, 1.0f)
+  | 0 => addf (pf_view_px | &view_px, 0.1f)
+  | 1 => addf (pf_view_px | &view_px, ~0.1f)
+  | 2 => addf (pf_view_py | &view_py, ~0.1f)
+  | 3 => addf (pf_view_py | &view_py, 0.1f)
   | 4 => addz (pf_view_zoom | &view_zoom, 0.1f)
   | 5 => addz (pf_view_zoom | &view_zoom, ~0.1f)
   | 6 => addf (pf_view_rotz | &view_rotz, 5.0f)
@@ -213,24 +213,23 @@ end // end of [the_state_destroy]
 
 fun the_state_init (): void = let
   fn init (): gpustate = let
+    fn char_of_digit (x: sizeLt 4):<> c1har = case+ int1_of_size1 x of
+      // by far the easiest way to persuade typechecker
+      // that result is a non-zero character
+      | 0 => '1' | 1 => '2' | 2 => '3' | 3 => '4'
+    // end of [char_of_digit]
     fn load_programs (x: &(@[pbind?][4]) >> @[pbind][4]): void = let
       fn upload_program (i: sizeLt 4, res: &pbind? >> pbind): void = let
         var stat: GLint
         val fragShader = glCreateShader GL_FRAGMENT_SHADER
         val () = () where {
           var !p_buf with pf_buf = @[char]('t', 'e', 's', 't', '0', '4', '-', 'X', '.', 'f', 'r', 'a', 'g', '\000')
-          val () = !p_buf.[7] := begin
-            case+ int1_of_size1 i of
-            | 0 => '1'
-            | 1 => '2'
-            | 2 => '3'
-            | 3 => '4'
-          end // end of [begin]
+          val () = !p_buf.[7] := char_of_digit i
           prval pf1_buf = bytes_v_of_chars_v pf_buf
           val () = bytes_strbuf_trans (pf1_buf | p_buf, 13)
-          val () = shader_from_file (fragShader, __cast (!p_buf)) where {
-            extern castfn __cast {n:int} (x: &strbuf (14, n)): string
-          } // end of [where]
+          val (fpf | str) = strbuf_takeout_ptr (pf1_buf | p_buf)
+          val () = shader_from_file (fragShader, str)
+          prval () = fpf (str)
           prval () = pf_buf := chars_v_of_b0ytes_v (bytes_v_of_strbuf_v pf1_buf)
         } // end of [where]
         val vertShader = glCreateShader GL_VERTEX_SHADER
@@ -284,13 +283,7 @@ fun the_state_init (): void = let
         var !p_buf with pf_buf = @[char](
           'd', 'a', 't', 'a', '/', 'l', 's', 'c', 't', '/', 't', 'e', 'x', '1', '.', 't', 'g', 'a', '\000'
         ) // end of [var]
-        val () = !p_buf.[13] := begin
-          case+ int1_of_size1 i of
-          | 0 => '1'
-          | 1 => '2'
-          | 2 => '3'
-          | 3 => '4'
-        end; // end of [begin]
+        val () = !p_buf.[13] := char_of_digit i
         // "tex<i>.tga"
         // The special shader used to render this texture performs its own minification
         // and magnification. Specify nearest neighbor sampling for speed.
@@ -341,7 +334,7 @@ in
     end // end of [let]
 end // end of [the_state_init]
 
-fun the_state_draw (mvp: &GLmat4, tid: sizeLt 4, pid: sizeLt 4): void = let
+fn the_state_draw (mvp: &GLmat4, tid: sizeLt 4, pid: sizeLt 4): void = let
   fun program_apply (x: &pbind, mvp: &GLmat4, texw: GLfloat, texh: GLfloat): void = let
     fun umat4 (loc: GLint, m: &GLmat4): void = () where {
       prval pf_mat1 = array_v_sing (view@ m)

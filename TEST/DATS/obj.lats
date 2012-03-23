@@ -2,6 +2,7 @@
 ** Wavefront OBJ file loader.
 ** Written by Artyom Shalkhakov in June, 2011.
 ** Modified in November, 2011.
+** Modified in March, 2012.
 *)
 
 %{
@@ -42,6 +43,7 @@ dataviewtype token =
   // actually a path name
   | TOKid of strptr1
   | TOKg
+  | TOKs
   | TOKusemtl
   | TOKmtllib
   // distinguished
@@ -59,6 +61,7 @@ fn free_token (tok: token):<> void = case+ tok of
   | ~TOKf () => ()
   | ~TOKid s => strptr_free s
   | ~TOKg () => ()
+  | ~TOKs () => ()
   | ~TOKusemtl () => ()
   | ~TOKmtllib () => ()
   | ~TOKeof () => ()
@@ -88,11 +91,13 @@ implement fprint_token
   | TOKid (!s) => begin
       fprint_string (pf | fl, "TOKid (\"");
       fprint_strptr (pf | fl, !s);
-      fprint_string (pf | fl, "\"");
+      fprint_string (pf | fl, "\")");
       fold@ tok
     end // end of [begin]
   | TOKg () =>
       (fprint_string (pf | fl, "TOKg"); fold@ tok)
+  | TOKs () =>
+      (fprint_string (pf | fl, "TOKs"); fold@ tok)
   | TOKusemtl () =>
       (fprint_string (pf | fl, "TOKusemtl"); fold@ tok)
   | TOKmtllib () =>
@@ -265,6 +270,8 @@ fn MTLTOK_lexing_error {a:viewt@ype} (lb: &lexbuf_t): a =
 
 blank = [ ' ' '\t' '\f' ]+
 
+newline = "\r" | "\n" | "\r\n"
+
 digit = [ '0'-'9' ]
 
 literal_int = ['-']? $digit+
@@ -291,7 +298,7 @@ com = ['#'] [^ '\n']* ['\n']
 TOKEN () =
   | $blank { TOKEN (mylexbuf) }
   | $com { TOKEN (mylexbuf) }
-  | "\n" { TOKnl () }
+  | $newline { TOKnl () }
   | "/" { TOKsl () }
   | "v" { TOKv () }
   | "vt" { TOKvt () }
@@ -300,8 +307,8 @@ TOKEN () =
   | "mtllib" { TOKmtllib () }
   | "usemtl" { TOKusemtl () }
   | "f" { TOKf () }
+  | "s" { TOKs () }
   // yes, a hack!
-  // | ['s'] [^ '\n']* ['\n'] { TOKEN (lb) }
   // | ['o'] [^ '\n']* ['\n'] { TOKEN (lb) }
   | "g" { TOKg () }
   | $literal_int { TOKint (lexeme_int (mylexbuf)) }
@@ -315,7 +322,7 @@ FACE () =
   | $blank { FACE (mylexbuf) }
   | "/" { TOKsl () }
   | $literal_int { TOKint (lexeme_int (mylexbuf)) }
-  | '\n' { TOKnl () }
+  | $newline { TOKnl () }
   | [^] { process_illegal_token (mylexbuf) }
 
 // tokenizing a path
@@ -324,14 +331,14 @@ PATH () =
   // skip preceding whitespace
   | $blank { PATH (mylexbuf) }
   | $path { TOKid (lexeme_strptr_lexbuf (mylexbuf)) }
-  | '\n' { TOKnl () }
+  | $newline { TOKnl () }
   | [^] { process_illegal_token (mylexbuf) }
 
 // lexical analysis of MTL files
 MTLTOK () =
   | $blank { MTLTOK (mylexbuf) }
   | $com { MTLTOK (mylexbuf) }
-  | "\n" { MTLnl () }
+  | $newline { MTLnl () }
   | "newmtl" { MTLnewmtl () }
   | "Kd" { MTLKd () }
   | "map_Kd" { MTLmap_Kd () }
@@ -881,6 +888,13 @@ fun parse_mesh {nm,nv,nn,ntc,ns:nat} (
       tok := TOKEN (lb);
       parse_mesh (lb, tok, msh)
     end // end of [begin]
+  | ~TOKs () => let // skip shading groups
+      val () = tok := TOKEN (lb)
+      val _ = parse_size (lb, tok)
+    in
+      skip_newline (lb, tok);
+      parse_mesh (lb, tok, msh)
+    end // end of [let]
   | ~TOKg () => let
       val () = tok := TOKEN (lb)
       val id = parse_ident (lb, tok)
